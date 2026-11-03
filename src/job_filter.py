@@ -32,6 +32,7 @@ def is_experience_eligible(job: Dict[str, Any], max_yoe_allowed: int = 3) -> Tup
     """
     title = str(job.get("title", "")).lower()
     description = str(job.get("description", "")).lower()
+    full_text = f"{title} {description}"
 
     # 1. Immediate reject for senior/management titles
     for kw in SENIOR_KEYWORDS:
@@ -41,11 +42,11 @@ def is_experience_eligible(job: Dict[str, Any], max_yoe_allowed: int = 3) -> Tup
 
     # 2. Immediate accept for explicit fresher / entry-level keywords
     for kw in ENTRY_LEVEL_KEYWORDS:
-        if kw in title or kw in description:
+        if kw in full_text:
             return True, f"Accepted: Explicit entry-level/fresher keyword ('{kw}')"
 
-    # 3. Check for experience ranges (e.g. 0-2, 1-3, 2-4, 5-7)
-    ranges = re.findall(RANGE_PATTERN, description)
+    # 3. Check for experience ranges (e.g. 0-2, 1-3, 2-4, 3-5, 5-7)
+    ranges = re.findall(RANGE_PATTERN, full_text)
     if ranges:
         for low_str, high_str in ranges:
             low = int(low_str)
@@ -57,7 +58,7 @@ def is_experience_eligible(job: Dict[str, Any], max_yoe_allowed: int = 3) -> Tup
                 return True, f"Accepted: Experience range {low}-{high} YOE is within target"
 
     # 4. Check for single mentions (e.g. 1+, 2+, 3+, 4+, 5+ years/yrs/YOE)
-    singles = re.findall(SINGLE_PATTERN, description)
+    singles = re.findall(SINGLE_PATTERN, full_text)
     if singles:
         # Extract all detected numbers tied to experience units
         detected_yoes = [int(s) for s in singles if s.isdigit()]
