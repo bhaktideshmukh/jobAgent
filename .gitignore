@@ -1,0 +1,36 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Sensitive Candidate Data (DO NOT COMMIT)
+data/profile.yaml
+data/resume.*
+data/cover_letter.*
+data/*.pdf
+data/*.docx
+
+# Environment variables & API keys
+.env
+.env.local
+
+# Browser Profiles & Active Login Sessions
+browser_profile/
+.playwright/
+
+# Application Databases & State Checkpoints
+*.db
+*.sqlite3
+applications.db
+
+# Logs & Screenshots
+logs/
+*.log
+screenshots/
+

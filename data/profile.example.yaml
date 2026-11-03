@@ -1,0 +1,39 @@
+# Candidate Profile Template (Safe for GitHub)
+# Copy this file to data/profile.yaml and fill in your actual details.
+
+personal_info:
+  full_name: "Your Name"
+  email: "your.email@example.com"
+  phone: "+1 555-0100"
+  city: "City"
+  state: "State"
+  country: "Country"
+  postal_code: "00000"
+  linkedin_url: "https://www.linkedin.com/in/yourprofile"
+  github_url: "https://github.com/yourprofile"
+  portfolio_url: "https://yourportfolio.dev"
+
+work_preferences:
+  expected_salary_usd: "100000"
+  notice_period_days: 15
+  earliest_start_date: "Immediately"
+  willing_to_relocate: true
+  preferred_work_type: "Remote"  # Remote, Hybrid, Onsite, Any
+
+legal_and_compliance:
+  legally_authorized_to_work: true
+  require_visa_sponsorship_now_or_future: false
+  us_citizenship_status: "U.S. Citizen"  # Citizen, Permanent Resident, H1B, OPT, etc.
+  veteran_status: "I am not a protected veteran"
+  disability_status: "I do not have a disability"
+  gender: "Decline to self-identify"
+  race_ethnicity: "Decline to self-identify"
+
+target_search:
+  job_titles:
+    - "Software Engineer"
+    - "AI Engineer"
+  locations:
+    - "Remote"
+  max_years_experience: 3
+
