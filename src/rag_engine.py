@@ -151,15 +151,24 @@ class ProfileRAG:
         if "relocate" in q_lower:
             return "Yes" if prefs.get("willing_to_relocate", True) else "No"
 
+        # USER RULE: Any experience / years question in any technology -> ALWAYS return "2"
+        exp_question_indicators = [
+            "how many years", "years of experience", "total exp", "exp in", 
+            "experience in", "experience with", "years experience", "yoe",
+            "hands-on experience", "relevant experience", "work experience"
+        ]
+        if any(ind in q_lower for ind in exp_question_indicators):
+            return "2"
+
+        # Notice period / Immediate joiner / Serving NP / Days left
+        if any(w in q_lower for w in ["serving your np", "notice period", "immediate joiner", "days left", "np or", "serving np"]):
+            return "0"
+
         # Technical skill check against resume text
-        # E.g. "Do you have experience with Python?" -> Check if Python is in resume
         tech_keywords = ["python", "aws", "docker", "kubernetes", "c#", ".net", "react", "sql", "git", "ci/cd", "devops"]
         matched_tech = [t for t in tech_keywords if t in q_lower]
         if matched_tech:
             found_in_resume = all(t in self.resume_text.lower() for t in matched_tech)
-            if "how many years" in q_lower:
-                # Based on resume profile experience
-                return "2" if found_in_resume else "0"
             if found_in_resume:
                 return "Yes"
 

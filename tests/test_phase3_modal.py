@@ -21,11 +21,11 @@ def run_phase3_test():
     print("  1. Open the job listing")
     print("  2. Click 'Easy Apply'")
     print("  3. Autofill inputs using your profile & resume")
-    print("  4. Stop at the Review step and take a screenshot")
+    print("  4. Review and click 'Submit application'")
     print("-" * 70)
 
     browser = JobApplicationBrowser(headless=False)
-    result = browser.process_application(test_job_url)
+    result = browser.process_application(test_job_url, auto_submit=True)
     browser.close()
 
     print("\n" + "=" * 70)

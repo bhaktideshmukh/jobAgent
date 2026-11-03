@@ -1,7 +1,7 @@
 import os
 import time
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Optional
 from playwright.sync_api import sync_playwright, Page, BrowserContext
 
 from src.config import BROWSER_USER_DATA_DIR, LOGS_DIR, get_resume_path, get_cover_letter_path
@@ -13,7 +13,7 @@ SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 class JobApplicationBrowser:
     """
     Automates opening job links, interacting with Easy Apply modals,
-    autofills fields via RAG, uploads resumes, and prepares for submission.
+    autofills fields via RAG, uploads resumes, and submits applications.
     """
 
     def __init__(self, headless: bool = False):
@@ -49,53 +49,75 @@ class JobApplicationBrowser:
         for c in candidates:
             try:
                 if c.is_visible():
-                    # Match dialog that contains dismissal button or application footer
                     if c.locator("button[aria-label*='Dismiss'], button:has-text('Next'), button:has-text('Review'), button:has-text('Submit')").count() > 0:
                         return c
             except Exception:
                 continue
-        # Fallback: Return first visible dialog
         for c in candidates:
             if c.is_visible():
                 return c
         return page.locator("div[role='dialog']").first
 
+    def _get_input_label(self, modal, inp) -> str:
+        """Finds the label or prompt question for an input element."""
+        # 1. aria-label
+        aria = inp.get_attribute("aria-label")
+        if aria and aria.strip():
+            return aria.strip()
+
+        # 2. id -> XPath label search (handles colons safely)
+        inp_id = inp.get_attribute("id")
+        if inp_id:
+            try:
+                lbl = modal.locator(f"xpath=//label[@for='{inp_id}']")
+                if lbl.count() > 0 and lbl.first.is_visible():
+                    return lbl.first.inner_text().strip()
+            except Exception:
+                pass
+
+        # 3. Label inside closest parent container
+        try:
+            parent = inp.locator("xpath=ancestor::div[contains(@class, 'form') or contains(@class, 'fb-') or contains(@class, 'component')][1]")
+            if parent.count() > 0:
+                lbl = parent.locator("label").first
+                if lbl.count() > 0 and lbl.is_visible():
+                    return lbl.inner_text().strip()
+                txt = parent.inner_text().split("\n")[0].strip()
+                if txt:
+                    return txt
+        except Exception:
+            pass
+
+        return ""
+
     def _fill_text_inputs(self, modal):
-        """Fills visible text, number, tel inputs, and textareas."""
+        """Fills visible text, number, tel inputs, and textareas, scrolling when needed."""
         inputs = modal.locator("input[type='text'], input[type='tel'], input[type='number'], textarea").all()
         for inp in inputs:
             try:
+                # Scroll element into view inside the modal dialog
+                try:
+                    inp.scroll_into_view_if_needed(timeout=2000)
+                    time.sleep(0.1)
+                except Exception:
+                    pass
+
                 if not inp.is_visible():
                     continue
 
-                # Check if already filled
                 current_val = inp.input_value().strip()
-                aria_label = inp.get_attribute("aria-label") or ""
-                inp_id = inp.get_attribute("id") or ""
+                question = self._get_input_label(modal, inp)
+                if not question:
+                    question = "Field"
 
-                label_text = ""
-                if inp_id:
-                    lbl = modal.locator(f"label[for='{inp_id}']")
-                    if lbl.count() > 0:
-                        label_text = lbl.first.inner_text().strip()
-
-                if not label_text and not aria_label:
-                    try:
-                        label_text = inp.locator("xpath=ancestor::div[contains(@class, 'fb-') or contains(@class, 'form')]").first.inner_text().split("\n")[0].strip()
-                    except Exception:
-                        pass
-
-                question = label_text or aria_label or "Field"
-                
-                # If field is already filled and valid, keep it unless it's empty
-                if current_val:
-                    continue
-
-                answer = self.rag.answer_screening_question(question)
-                print(f"    [Input] '{question}' -> Filling: '{answer}'")
-                inp.click()
-                inp.fill(answer)
-                time.sleep(0.2)
+                # If current input is empty or marked as invalid, fill it
+                if not current_val or current_val == "Invalid input":
+                    answer = self.rag.answer_screening_question(question)
+                    print(f"    [Input] '{question}' -> Filling: '{answer}'")
+                    inp.click()
+                    inp.fill("")
+                    inp.fill(answer)
+                    time.sleep(0.2)
             except Exception as e:
                 print(f"    [Input Error] {e}")
 
@@ -104,20 +126,18 @@ class JobApplicationBrowser:
         selects = modal.locator("select").all()
         for sel in selects:
             try:
+                try:
+                    sel.scroll_into_view_if_needed(timeout=2000)
+                    time.sleep(0.1)
+                except Exception:
+                    pass
+
                 if not sel.is_visible():
                     continue
-                # Determine label
-                sel_id = sel.get_attribute("id") or ""
-                label_text = ""
-                if sel_id:
-                    lbl = modal.locator(f"label[for='{sel_id}']")
-                    if lbl.count() > 0:
-                        label_text = lbl.first.inner_text().strip()
 
-                question = label_text or sel.get_attribute("aria-label") or "Dropdown"
+                question = self._get_input_label(modal, sel) or "Dropdown"
                 answer = self.rag.answer_screening_question(question).lower()
 
-                # Get all options
                 options = sel.locator("option").all()
                 best_option_val = None
                 for opt in options:
@@ -139,6 +159,12 @@ class JobApplicationBrowser:
         fieldsets = modal.locator("fieldset").all()
         for fs in fieldsets:
             try:
+                try:
+                    fs.scroll_into_view_if_needed(timeout=2000)
+                    time.sleep(0.1)
+                except Exception:
+                    pass
+
                 legend = fs.locator("legend").inner_text().strip()
                 if not legend:
                     continue
@@ -149,7 +175,7 @@ class JobApplicationBrowser:
                     radio_id = radio.get_attribute("id")
                     radio_label = ""
                     if radio_id:
-                        lbl = fs.locator(f"label[for='{radio_id}']")
+                        lbl = fs.locator(f"xpath=//label[@for='{radio_id}']")
                         if lbl.count() > 0:
                             radio_label = lbl.first.inner_text().strip().lower()
 
@@ -163,7 +189,7 @@ class JobApplicationBrowser:
                 print(f"    [Radio Error] {e}")
 
     def _handle_file_uploads(self, modal):
-        """Uploads candidate resume or selects existing resume card."""
+        """Uploads candidate resume if file input is present."""
         resume_path = get_resume_path()
         file_inputs = modal.locator("input[type='file']").all()
 
@@ -176,18 +202,10 @@ class JobApplicationBrowser:
             except Exception as e:
                 print(f"    [Upload Error] {e}")
 
-        # If LinkedIn lists pre-uploaded resumes, select the first one if none selected
-        try:
-            resume_cards = modal.locator("div.jobs-document-upload__title, [data-test-document-card]").all()
-            if resume_cards:
-                print("    [Resume] Pre-uploaded resume card detected on LinkedIn.")
-        except Exception:
-            pass
-
-    def process_application(self, job_url: str) -> Dict[str, Any]:
+    def process_application(self, job_url: str, auto_submit: bool = True) -> Dict[str, Any]:
         """
         Navigates to job URL, detects Easy Apply, steps through the modal,
-        autofills fields, attaches files, and halts at the Review step.
+        autofills fields, attaches files, and submits the application.
         """
         if not self.context:
             self.start()
@@ -259,12 +277,23 @@ class JobApplicationBrowser:
                 next_btn = page.locator("div.artdeco-modal button:has-text('Next'), button[aria-label*='Continue to next step'], button:has-text('Next')").first
 
                 if submit_btn.count() > 0 and submit_btn.is_visible():
-                    print("Reached final step! 'Submit application' button is ready.")
-                    review_file = SCREENSHOTS_DIR / f"review_ready_{int(time.time())}.png"
+                    print("Reached final step! 'Submit application' button is visible.")
+                    review_file = SCREENSHOTS_DIR / f"before_submit_{int(time.time())}.png"
                     page.screenshot(path=str(review_file))
-                    result["status"] = "ready_for_review"
-                    result["screenshot_path"] = str(review_file)
-                    print(f"Review screenshot saved: {review_file}")
+                    
+                    if auto_submit:
+                        print("Clicking 'Submit application'...")
+                        submit_btn.click()
+                        time.sleep(3)
+                        # Check for confirmation
+                        confirm_file = SCREENSHOTS_DIR / f"submitted_{int(time.time())}.png"
+                        page.screenshot(path=str(confirm_file))
+                        result["status"] = "submitted"
+                        result["screenshot_path"] = str(confirm_file)
+                        print("Application successfully submitted on LinkedIn!")
+                    else:
+                        result["status"] = "ready_for_review"
+                        result["screenshot_path"] = str(review_file)
                     break
 
                 if review_btn.count() > 0 and review_btn.is_visible():
@@ -283,14 +312,14 @@ class JobApplicationBrowser:
                     if errors:
                         err_texts = [e.inner_text().strip() for e in errors if e.is_visible()]
                         if err_texts:
-                            print(f"  [Validation Warning] {err_texts}")
+                            print(f"  [Validation Notice] {err_texts}")
                     continue
 
                 print(f"No Next/Review/Submit buttons visible on step {step}. Halting wizard.")
                 break
 
-            print("\nLeaving browser open for 5 seconds for visual inspection...")
-            time.sleep(5)
+            print("\nWaiting 4 seconds before closing browser...")
+            time.sleep(4)
             page.close()
             return result
 
