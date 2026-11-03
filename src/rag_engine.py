@@ -106,9 +106,11 @@ class ProfileRAG:
         if "email" in q_lower:
             return str(personal.get("email", ""))
         if "phone" in q_lower or "mobile" in q_lower or "contact number" in q_lower:
-            code = personal.get("country_code", "")
-            num = personal.get("phone", "")
-            return f"{code} {num}".strip() if code else str(num)
+            # On LinkedIn, phone input expects only the clean numeric digits without country code
+            num = str(personal.get("phone", "7974065469")).replace(" ", "").replace("-", "")
+            if num.startswith("+91"):
+                num = num[3:]
+            return num
         if "linkedin" in q_lower:
             return str(personal.get("linkedin_url", ""))
         if "github" in q_lower:
