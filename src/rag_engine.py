@@ -1,4 +1,5 @@
 import os
+import re
 import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -119,13 +120,42 @@ class ProfileRAG:
             return str(personal.get("portfolio_url", "N/A"))
 
         # Location checks
-        if any(w in q_lower for w in ["city", "current location", "location", "address", "state", "postal"]):
+        if any(w in q_lower for w in ["city", "current location", "location", "address", "state", "postal", "pincode", "zip"]):
             city = personal.get("city", "")
             state = personal.get("state", "")
             country = personal.get("country", "")
+            postal = personal.get("postal_code", "451001")
+            if any(w in q_lower for w in ["pincode", "postal", "zip"]):
+                return str(postal)
+            if "state" in q_lower and "city" not in q_lower:
+                return state
             if "city" in q_lower and "state" not in q_lower and "country" not in q_lower:
                 return city
             return f"{city}, {state}, {country}".strip(", ")
+
+        # Work experience details (Company, Title)
+        work_exp = self.profile_data.get("work_experience", {})
+        current_comp = work_exp.get("current_company", "Avalara Technologies")
+        current_role = work_exp.get("current_title", "Software Engineer")
+
+        # Questions about current employment status (Yes/No)
+        if any(w in q_lower for w in ["currently employed", "currently working", "are you employed"]):
+            return "Yes"
+
+        # Questions asking for Company / Employer / Organization name
+        company_indicators = [
+            "current company", "current employer", "present company", "present employer",
+            "name of current company", "name of company", "company name", "organization name",
+            "current organization", "present organization", "current firm", "employer name",
+            "previous company", "past employer", "most recent employer", "name of your employer"
+        ]
+        if any(ind in q_lower for ind in company_indicators) or q_lower in ["company", "employer", "organization", "current company:"]:
+            return current_comp
+
+        # Role / Title / Designation
+        role_indicators = ["current role", "current designation", "current title", "job title", "designation", "present title"]
+        if any(ind in q_lower for ind in role_indicators):
+            return current_role
 
         # Legal & compliance checks
         if "authorized to work" in q_lower or "legally authorized" in q_lower:
@@ -141,15 +171,51 @@ class ProfileRAG:
         if "disability" in q_lower:
             return str(legal.get("disability_status", "I do not have a disability"))
 
-        # Work preferences
-        if "salary" in q_lower or "compensation" in q_lower or "ctc" in q_lower:
-            currency = prefs.get("currency", "INR")
-            amount = prefs.get("expected_salary_usd", prefs.get("expected_salary", "1500000"))
-            return f"{currency} {amount}"
-        if "notice period" in q_lower or "start date" in q_lower:
+        # Salary / CTC checks - STRICTLY NUMERIC ONLY (no currency text, e.g. '1800000' or '15')
+        if any(w in q_lower for w in ["salary", "compensation", "ctc", "remuneration", "package"]):
+            curr_sal = re.sub(r"[^\d]", "", str(prefs.get("current_salary", "1500000"))) or "1500000"
+            exp_sal = re.sub(r"[^\d]", "", str(prefs.get("expected_salary", "1800000"))) or "1800000"
+            is_lpa = any(u in q_lower for u in ["lpa", "lakh", "lakhs", "lac", "lacs"])
+            
+            if any(w in q_lower for w in ["current", "present", "fixed", "existing", "drawing"]):
+                if is_lpa:
+                    return str(round(int(curr_sal) / 100000)) if len(curr_sal) >= 6 else curr_sal
+                return curr_sal
+            else:
+                # Expected or generic
+                if is_lpa:
+                    return str(round(int(exp_sal) / 100000)) if len(exp_sal) >= 6 else exp_sal
+                return exp_sal
+
+        # Notice period / Immediate joiner / Serving NP / Days left -> Always '0'
+        np_indicators = [
+            "serving your np", "notice period", "immediate joiner", "days left",
+            "np or", "serving np", "how many days notice", "notice days", "period in days"
+        ]
+        if any(w in q_lower for w in np_indicators):
+            return "0"
+
+        if "start date" in q_lower or "earliest start" in q_lower:
             return str(prefs.get("earliest_start_date", "Immediately"))
         if "relocate" in q_lower:
             return "Yes" if prefs.get("willing_to_relocate", True) else "No"
+
+        # "Rate yourself" / Proficiency rating -> ALWAYS return highest integer
+        rating_indicators = [
+            "rate yourself", "rate your", "how would you rate", "rating on a scale",
+            "scale of 1", "scale 1-5", "scale 1-10", "on a scale of", "self-rating",
+            "proficiency rating", "rate your proficiency"
+        ]
+        if any(ind in q_lower for ind in rating_indicators):
+            if "10" in q_lower:
+                return "10"
+            if "5" in q_lower:
+                return "5"
+            if "4" in q_lower:
+                return "4"
+            if "3" in q_lower:
+                return "3"
+            return "5"
 
         # USER RULE: Any experience / years question in any technology -> ALWAYS return "2"
         exp_question_indicators = [
@@ -160,9 +226,9 @@ class ProfileRAG:
         if any(ind in q_lower for ind in exp_question_indicators):
             return "2"
 
-        # Notice period / Immediate joiner / Serving NP / Days left
-        if any(w in q_lower for w in ["serving your np", "notice period", "immediate joiner", "days left", "np or", "serving np"]):
-            return "0"
+        # Education degree
+        if any(w in q_lower for w in ["degree", "highest qualification", "highest education", "education level"]):
+            return "Bachelor's Degree"
 
         # Technical skill check against resume text
         tech_keywords = ["python", "aws", "docker", "kubernetes", "c#", ".net", "react", "sql", "git", "ci/cd", "devops"]

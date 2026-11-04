@@ -15,10 +15,17 @@ personal_info:
 
 work_preferences:
   expected_salary_usd: "100000"
+  current_salary: "80000"
+  expected_salary: "100000"
   notice_period_days: 15
   earliest_start_date: "Immediately"
   willing_to_relocate: true
   preferred_work_type: "Remote"  # Remote, Hybrid, Onsite, Any
+
+work_experience:
+  current_company: "Example Corp"
+  current_title: "Software Engineer"
+  total_years_experience: 2
 
 legal_and_compliance:
   legally_authorized_to_work: true

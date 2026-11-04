@@ -49,8 +49,7 @@ def discover_jobs_node(state: ApplicationState) -> Dict[str, Any]:
     # Filter out jobs that were already applied previously
     unapplied_queue = []
     for job in raw_jobs:
-        url = job.get("job_url", "")
-        if not is_already_applied(url):
+        if not is_already_applied(job):
             unapplied_queue.append(job)
         else:
             print(f"Skipping already applied job: {job.get('title')} @ {job.get('company')}")
@@ -66,12 +65,17 @@ def discover_jobs_node(state: ApplicationState) -> Dict[str, Any]:
 
 def select_next_job_node(state: ApplicationState) -> Dict[str, Any]:
     """
-    Node 2: Pulls the next job from the queue.
+    Node 2: Pulls the next job from the queue, discarding any that have already been applied.
     """
-    queue = state.get("job_queue", [])
+    queue = list(state.get("job_queue", []))
+
+    while queue and is_already_applied(queue[0]):
+        skipped = queue.pop(0)
+        print(f"Skipping already applied job in queue: {skipped.get('title')} @ {skipped.get('company')}")
+
     if not queue:
         print("\n[LangGraph Node: SELECT JOB] No more jobs remaining in the queue.")
-        return {"current_job": None}
+        return {"current_job": None, "job_queue": []}
 
     next_job = queue[0]
     remaining_queue = queue[1:]
@@ -167,8 +171,12 @@ def apply_job_node(state: ApplicationState) -> Dict[str, Any]:
     browser.close()
 
     status = result.get("status", "failed")
+    error_msg = result.get("error", "")
+    if "No Direct / Easy Apply button" in str(error_msg):
+        status = "no_apply_button"
+
     screenshot = result.get("screenshot_path")
-    record_application(job, status=status, reason=result.get("error", ""), screenshot_path=screenshot)
+    record_application(job, status=status, reason=error_msg, screenshot_path=screenshot)
 
     applied = state.get("applied_jobs", [])
     applied.append({
