@@ -256,21 +256,53 @@ class JobApplicationBrowser:
             page.goto(job_url, timeout=40000, wait_until="domcontentloaded")
             time.sleep(3)
 
+            # Check for Cloudflare / Security Check
+            if any(term in page.title().lower() for term in ["security check", "just a moment", "challenge"]):
+                print("\n[!] Cloudflare Verification Detected in the browser window.")
+                print("[!] Please complete the 'Verify you are human' checkbox on your screen...")
+                for _ in range(30):
+                    time.sleep(1)
+                    if not any(term in page.title().lower() for term in ["security check", "just a moment", "challenge"]):
+                        print("Verification passed! Waiting for job page to load...")
+                        time.sleep(4)
+                        break
+
             # Check if role is already applied
-            already_applied = page.locator("span.artdeco-inline-feedback:has-text('Applied'), button:has-text('Applied'), div:has-text('You applied on Indeed')").first
+            already_applied = page.locator("span.artdeco-inline-feedback:has-text('Applied'), button:has-text('Applied'), div:has-text('You applied on Indeed'), [data-testid*='applied']").first
             if already_applied.count() > 0 and already_applied.is_visible():
                 print(f"Notice: You have already applied to this role on {platform_name}!")
                 result["status"] = "already_applied"
                 page.close()
                 return result
 
-            # Look for Easy Apply / Apply now button
+            # Unified Apply Button Locators
             if is_indeed:
-                apply_btn = page.locator("button#indeedApplyButton, button:has-text('Apply now'), button:has-text('Easily apply'), a#indeedApplyButton").first
+                apply_selectors = [
+                    "button:has-text('Apply now')",
+                    "button:has-text('Easily apply')",
+                    "#indeedApplyButton",
+                    "[data-testid*='indeedApply']",
+                    "button[aria-label*='Apply now']",
+                    "a:has-text('Apply now')"
+                ]
             else:
-                apply_btn = page.locator("button.jobs-apply-button, button:has-text('Easy Apply'), button[aria-label*='Easy Apply']").first
+                apply_selectors = [
+                    "button.jobs-apply-button",
+                    "button:has-text('Easy Apply')",
+                    "button[aria-label*='Easy Apply']"
+                ]
+
+            apply_query = ", ".join(apply_selectors)
             
-            if not apply_btn.is_visible(timeout=5000):
+            # Wait up to 15s for the button to appear after page loads
+            try:
+                page.wait_for_selector(apply_query, state="visible", timeout=15000)
+            except Exception:
+                pass
+
+            apply_btn = page.locator(apply_query).first
+            
+            if not apply_btn.is_visible():
                 result["error"] = f"No Direct / Easy Apply button visible on {platform_name} (may require login or external redirect)"
                 page.screenshot(path=str(SCREENSHOTS_DIR / f"{platform_name.lower()}_no_apply_found.png"))
                 page.close()
@@ -278,10 +310,20 @@ class JobApplicationBrowser:
 
             result["easy_apply_found"] = True
             print(f"Found {platform_name} Apply button! Clicking...")
-            apply_btn.click()
-            time.sleep(3)
+            
+            # Click and detect if Indeed opens a popup tab or inline modal
+            apply_page = page
+            try:
+                with page.expect_popup(timeout=4000) as popup_info:
+                    apply_btn.click()
+                apply_page = popup_info.value
+                print("Indeed opened application in a dedicated application window.")
+                apply_page.wait_for_load_state("domcontentloaded")
+                time.sleep(2)
+            except Exception:
+                time.sleep(3)
 
-            container = self._get_active_container(page)
+            container = self._get_active_container(apply_page)
             print(f"{platform_name} application container detected!")
 
             # Step through application wizard
@@ -298,7 +340,7 @@ class JobApplicationBrowser:
 
                 # Capture step screenshot
                 step_img = SCREENSHOTS_DIR / f"{platform_name.lower()}_step_{step}.png"
-                page.screenshot(path=str(step_img))
+                apply_page.screenshot(path=str(step_img))
 
                 # Button selectors for both platforms
                 submit_selectors = [
@@ -318,25 +360,53 @@ class JobApplicationBrowser:
                     "button[aria-label*='Continue']"
                 ]
 
-                # 1. Check for Submit
+                # Wait for any of Submit, Review, or Next/Continue buttons to appear
+                # (Indeed often displays a brief 2-3s 'Preparing review' loading state)
                 submit_btn = None
-                for sel in submit_selectors:
-                    loc = page.locator(sel).first
-                    if loc.count() > 0 and loc.is_visible():
-                        submit_btn = loc
+                review_btn = None
+                next_btn = None
+
+                for wait_attempt in range(8):
+                    # 1. Check for Submit
+                    for sel in submit_selectors:
+                        loc = apply_page.locator(sel).first
+                        if loc.count() > 0 and loc.is_visible():
+                            submit_btn = loc
+                            break
+                    if submit_btn:
                         break
+
+                    # 2. Check for Review
+                    for sel in review_selectors:
+                        loc = apply_page.locator(sel).first
+                        if loc.count() > 0 and loc.is_visible():
+                            review_btn = loc
+                            break
+                    if review_btn:
+                        break
+
+                    # 3. Check for Next / Continue
+                    for sel in next_selectors:
+                        loc = apply_page.locator(sel).first
+                        if loc.count() > 0 and loc.is_visible():
+                            next_btn = loc
+                            break
+                    if next_btn:
+                        break
+
+                    time.sleep(1)
 
                 if submit_btn:
                     print(f"Reached final step! 'Submit' button is visible on {platform_name}.")
                     review_file = SCREENSHOTS_DIR / f"{platform_name.lower()}_before_submit_{int(time.time())}.png"
-                    page.screenshot(path=str(review_file))
+                    apply_page.screenshot(path=str(review_file))
                     
                     if auto_submit:
                         print(f"Clicking 'Submit' on {platform_name}...")
                         submit_btn.click()
                         time.sleep(3)
                         confirm_file = SCREENSHOTS_DIR / f"{platform_name.lower()}_submitted_{int(time.time())}.png"
-                        page.screenshot(path=str(confirm_file))
+                        apply_page.screenshot(path=str(confirm_file))
                         result["status"] = "submitted"
                         result["screenshot_path"] = str(confirm_file)
                         print(f"Application successfully submitted on {platform_name}!")
@@ -345,27 +415,11 @@ class JobApplicationBrowser:
                         result["screenshot_path"] = str(review_file)
                     break
 
-                # 2. Check for Review
-                review_btn = None
-                for sel in review_selectors:
-                    loc = page.locator(sel).first
-                    if loc.count() > 0 and loc.is_visible():
-                        review_btn = loc
-                        break
-
                 if review_btn:
-                    print("Found 'Review' button! Advancing to review page...")
+                    print(f"Found '{review_btn.inner_text().strip()}' button! Advancing to review page...")
                     review_btn.click()
-                    time.sleep(2)
+                    time.sleep(2.5)
                     continue
-
-                # 3. Check for Next / Continue
-                next_btn = None
-                for sel in next_selectors:
-                    loc = page.locator(sel).first
-                    if loc.count() > 0 and loc.is_visible():
-                        next_btn = loc
-                        break
 
                 if next_btn:
                     print(f"Found '{next_btn.inner_text().strip()}' button! Advancing...")
@@ -378,6 +432,11 @@ class JobApplicationBrowser:
 
             print("\nWaiting 4 seconds before closing browser...")
             time.sleep(4)
+            try:
+                if apply_page != page:
+                    apply_page.close()
+            except Exception:
+                pass
             page.close()
             return result
 
