@@ -83,8 +83,37 @@ def test_all():
     print(f"  [PASS] Experience YOE: {exp_ans}")
     print(f"  [PASS] Notice Period Days: {np_ans}")
 
+    # 8. Test Previous Organization Employment (Always "No")
+    print("\n--- 8. Previous Organization Employment (Always 'No') ---")
+    prev_org_questions = [
+        "Have you worked here in this organisation previously?",
+        "Have you previously worked at this company?",
+        "Were you previously employed by us?",
+        "Are you a former employee of this company?",
+        "Prior employment with our organisation?",
+        "Have you worked for this organization in the past?"
+    ]
+    for q in prev_org_questions:
+        ans = rag.answer_screening_question(q)
+        assert ans == "No", f"Expected 'No' for '{q}', got '{ans}'"
+        print(f"  [PASS] '{q}' -> {ans}")
+
+    # 9. Test Consent & Agreement Questions (Always "Yes")
+    print("\n--- 9. Consent & Agreement Questions (Always 'Yes') ---")
+    consent_questions = [
+        "Do you consent to the processing of your data?",
+        "Do you agree to the terms and conditions?",
+        "I certify that all statements made are true and complete",
+        "Do you acknowledge the privacy policy?",
+        "Consent to background verification check?"
+    ]
+    for q in consent_questions:
+        ans = rag.answer_screening_question(q)
+        assert ans == "Yes", f"Expected 'Yes' for '{q}', got '{ans}'"
+        print(f"  [PASS] '{q}' -> {ans}")
+
     print("\n" + "=" * 70)
-    print("ALL 7 USER OBSERVATION VERIFICATIONS PASSED!")
+    print("ALL VERIFICATIONS (INCLUDING PREVIOUS EMPLOYER & CONSENT) PASSED!")
     print("=" * 70)
 
 if __name__ == "__main__":

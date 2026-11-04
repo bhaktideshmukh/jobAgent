@@ -120,16 +120,19 @@ class ProfileRAG:
             return str(personal.get("portfolio_url", "N/A"))
 
         # Location checks
-        if any(w in q_lower for w in ["city", "current location", "location", "address", "state", "postal", "pincode", "zip"]):
+        has_state = bool(re.search(r'\bstate\b', q_lower))
+        has_city = bool(re.search(r'\bcity\b', q_lower))
+        has_location_kw = any(w in q_lower for w in ["current location", "location", "address", "postal", "pincode", "zip"]) or has_state or has_city
+        if has_location_kw:
             city = personal.get("city", "")
             state = personal.get("state", "")
             country = personal.get("country", "")
             postal = personal.get("postal_code", "451001")
             if any(w in q_lower for w in ["pincode", "postal", "zip"]):
                 return str(postal)
-            if "state" in q_lower and "city" not in q_lower:
+            if has_state and not has_city:
                 return state
-            if "city" in q_lower and "state" not in q_lower and "country" not in q_lower:
+            if has_city and not has_state and "country" not in q_lower:
                 return city
             return f"{city}, {state}, {country}".strip(", ")
 
@@ -141,6 +144,19 @@ class ProfileRAG:
         # Questions about current employment status (Yes/No)
         if any(w in q_lower for w in ["currently employed", "currently working", "are you employed"]):
             return "Yes"
+
+        # Rule: Previously worked here / at this organization -> ALWAYS "No"
+        prev_worked_indicators = [
+            "worked here", "worked at this", "previously worked", "previously employed",
+            "worked for this", "worked for us", "former employee", "past employee",
+            "ever worked for", "worked with this organisation", "worked in this organisation",
+            "worked with this organization", "worked in this organization",
+            "worked with us previously", "prior employment with", "employed here previously",
+            "employed with us", "worked for the company previously", "have you worked for",
+            "employed by this", "employed by us"
+        ]
+        if any(ind in q_lower for ind in prev_worked_indicators):
+            return "No"
 
         # Questions asking for Company / Employer / Organization name
         company_indicators = [
@@ -170,6 +186,15 @@ class ProfileRAG:
             return str(legal.get("veteran_status", "I am not a protected veteran"))
         if "disability" in q_lower:
             return str(legal.get("disability_status", "I do not have a disability"))
+
+        # Consent, agreements, acknowledgements, certifications -> ALWAYS "Yes"
+        consent_indicators = [
+            "consent", "do you agree", "terms and conditions", "privacy policy",
+            "certify", "acknowledge", "declaration", "i agree", "confirm that the information",
+            "background check consent", "data processing consent", "agree to the terms"
+        ]
+        if any(ind in q_lower for ind in consent_indicators):
+            return "Yes"
 
         # Salary / CTC checks - STRICTLY NUMERIC ONLY (no currency text, e.g. '1800000' or '15')
         if any(w in q_lower for w in ["salary", "compensation", "ctc", "remuneration", "package"]):

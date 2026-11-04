@@ -483,6 +483,145 @@ class JobApplicationBrowser:
             except Exception as e:
                 print(f"    [Upload Error] {e}")
 
+    def _fill_consent_checkboxes(self, container, filled_ids: Set[str]):
+        """
+        Detects and ticks required consent, agreement, and certification checkboxes.
+        Strictly ignores the 'Follow company' checkbox.
+        """
+        try:
+            checkboxes = container.locator("input[type='checkbox']").all()
+            for cb in checkboxes:
+                try:
+                    if not cb.is_visible():
+                        continue
+
+                    cb_id = cb.get_attribute("id") or ""
+                    cb_name = cb.get_attribute("name") or ""
+                    cb_aria = cb.get_attribute("aria-label") or ""
+                    lbl = self._get_input_label(container, cb)
+                    desc = f"{cb_id} {cb_name} {cb_aria} {lbl}".lower()
+
+                    # Never tick the "Follow company" checkbox
+                    if "follow" in desc or cb_id == "follow-company-checkbox":
+                        continue
+
+                    field_key = f"cb_{cb_id}_{cb_name}_{cb_aria}_{lbl[:20]}"
+                    if field_key in filled_ids:
+                        continue
+
+                    # Check if this checkbox is for consent, terms, policy, or is required
+                    is_consent = any(term in desc for term in [
+                        "consent", "agree", "terms", "privacy", "certify", "acknowledge",
+                        "confirm", "declare", "declaration", "policy", "truthful", "accurate",
+                        "authorization", "authorize", "understand", "background check"
+                    ])
+                    is_required = (
+                        cb.get_attribute("required") is not None 
+                        or cb.get_attribute("aria-required") == "true" 
+                        or "required" in desc
+                    )
+
+                    if is_consent or is_required:
+                        if not cb.is_checked():
+                            print(f"    [Checkbox Consent] Ticking consent box: '{lbl[:60]}'")
+                            cb.check(force=True)
+                            time.sleep(0.15)
+                        filled_ids.add(field_key)
+
+                except Exception as e:
+                    print(f"    [Checkbox Item Error] {e}")
+
+            # Also check for custom role='checkbox' elements (divs or buttons)
+            custom_cbs = container.locator("div[role='checkbox'], button[role='checkbox']").all()
+            for ccb in custom_cbs:
+                try:
+                    if not ccb.is_visible():
+                        continue
+                    lbl = self._get_input_label(container, ccb) or ccb.inner_text().strip()
+                    desc = lbl.lower()
+                    if "follow" in desc:
+                        continue
+                    if any(term in desc for term in ["consent", "agree", "terms", "privacy", "certify", "acknowledge"]):
+                        is_checked = ccb.get_attribute("aria-checked") == "true"
+                        if not is_checked:
+                            print(f"    [Custom Checkbox Consent] Clicking: '{lbl[:60]}'")
+                            ccb.click(force=True)
+                            time.sleep(0.15)
+                except Exception as e:
+                    print(f"    [Custom Checkbox Error] {e}")
+
+        except Exception as e:
+            print(f"    [Consent Checkboxes Error] {e}")
+
+    def _uncheck_follow_company(self, container, page: Page) -> bool:
+        """
+        Unchecks the 'Follow company' checkbox on LinkedIn before submitting.
+        Prevents automatically following companies upon application submission.
+        """
+        try:
+            follow_selectors = [
+                "input[type='checkbox']#follow-company-checkbox",
+                "input[type='checkbox'][id*='follow']",
+                "input[type='checkbox'][name*='follow']",
+                "input[type='checkbox'][aria-label*='Follow']",
+                "input[type='checkbox'][aria-label*='follow']",
+                "label:has-text('Follow') input[type='checkbox']",
+                "label:has-text('follow') input[type='checkbox']"
+            ]
+
+            # 1. Search in container first, then in full page dialog
+            for scope in [container, page]:
+                for sel in follow_selectors:
+                    try:
+                        checkboxes = scope.locator(sel).all()
+                        for cb in checkboxes:
+                            if cb.is_checked():
+                                print("    [LinkedIn] Detected checked 'Follow company' box. Unchecking...")
+                                cb.uncheck(force=True)
+                                time.sleep(0.2)
+                                if cb.is_checked():
+                                    cb.click(force=True)
+                                    time.sleep(0.2)
+                                return True
+                    except Exception:
+                        continue
+
+            # 2. Check by label if direct checkbox input was hidden
+            label_selectors = [
+                "label[for='follow-company-checkbox']",
+                "label:has-text('Follow company')",
+                "label:has-text('Follow ')",
+                "label:has-text('follow ')"
+            ]
+            for scope in [container, page]:
+                for sel in label_selectors:
+                    try:
+                        labels = scope.locator(sel).all()
+                        for lbl in labels:
+                            if not lbl.is_visible():
+                                continue
+                            txt = lbl.inner_text().lower()
+                            if "follow" in txt:
+                                inp = lbl.locator("input[type='checkbox']")
+                                if inp.count() > 0 and inp.first.is_checked():
+                                    print(f"    [LinkedIn] Unchecking via label: '{lbl.inner_text().strip()}'")
+                                    lbl.click(force=True)
+                                    time.sleep(0.2)
+                                    return True
+                                for_id = lbl.get_attribute("for")
+                                if for_id:
+                                    inp_by_id = scope.locator(f"#{for_id}")
+                                    if inp_by_id.count() > 0 and inp_by_id.first.is_checked():
+                                        print(f"    [LinkedIn] Unchecking '{for_id}' via label click...")
+                                        lbl.click(force=True)
+                                        time.sleep(0.2)
+                                        return True
+                    except Exception:
+                        continue
+        except Exception as e:
+            print(f"    [Uncheck Follow Error] {e}")
+        return False
+
     def process_application(self, job_url: str, auto_submit: bool = True) -> Dict[str, Any]:
         """
         Navigates to job URL, detects Easy Apply / Direct Apply (LinkedIn or Indeed),
@@ -592,7 +731,9 @@ class JobApplicationBrowser:
                 self._fill_select_dropdowns(container, filled_ids)
                 self._fill_custom_comboboxes(container, filled_ids)
                 self._fill_radio_buttons(container, filled_ids)
+                self._fill_consent_checkboxes(container, filled_ids)
                 self._handle_file_uploads(container)
+                self._uncheck_follow_company(container, apply_page)
                 time.sleep(0.8)
 
                 # Capture step screenshot
@@ -653,6 +794,12 @@ class JobApplicationBrowser:
 
                 if submit_btn:
                     print(f"Reached final step! 'Submit' button is visible on {platform_name}.")
+                    # Ensure any final consent / agreement checkbox is ticked
+                    self._fill_consent_checkboxes(container, filled_ids)
+                    # Always uncheck the 'Follow company' checkbox before submitting
+                    self._uncheck_follow_company(container, apply_page)
+                    time.sleep(0.3)
+                    
                     review_file = SCREENSHOTS_DIR / f"{platform_name.lower()}_before_submit_{int(time.time())}.png"
                     apply_page.screenshot(path=str(review_file))
                     
