@@ -1,6 +1,6 @@
 # Autonomous Job Discovery & Application Agent (LangGraph + Playwright)
 
-An autonomous, agentic job search and application engine built with **LangGraph** and **Playwright**. It discovers live **Easy Apply** / **Direct Apply** software engineering positions on **LinkedIn** and **Indeed**, strictly filters for roles requiring **$\le 3$ years of experience**, autofills application forms using a localized RAG engine over the candidate's resume and structured profile, attaches static documents (resume and cover letter), and submits applications with audit proof.
+An autonomous, agentic job search and application engine built with **LangGraph** and **Playwright**. It discovers live **Easy Apply** / **Direct Apply** software engineering positions on **LinkedIn** and **Indeed**, strictly filters for roles requiring **$\le 3$ years of experience**, autofills application forms using a localized RAG engine over the candidate's resume and structured profile, attaches candidate resume, and submits applications with audit proof.
 
 ---
 
@@ -10,16 +10,20 @@ An autonomous, agentic job search and application engine built with **LangGraph*
 - **Strict Experience Gatekeeper ($\le 3$ YOE)**: Regex and semantic parser inspects job titles and descriptions to reject senior/lead roles (4+ YOE, Staff, Principal, Lead) while admitting entry-level, fresher, associate, and $\le 3$ YOE ranges.
 - **Form-Filling RAG Engine**: Accurately maps application form questions to structured candidate context:
   - **Company & Role**: Autocompletes current organization (*Avalara Technologies*) and designation (*Software Engineer*).
-  - **Experience & Notice Period**: Strict candidate rules (e.g., technology experience $\rightarrow$ `2`, notice period $\rightarrow$ `0` days).
+  - **Experience & Notice Period**: Strict candidate rules (technology experience $\rightarrow$ `2` YOE, joining days $\rightarrow$ `0` days, serving notice period $\rightarrow$ `No`).
   - **Clean CTC Formatting**: Pure numeric values without currency text (e.g. `1500000` / `1800000`, or `15` / `18` if LPA is requested).
   - **Rate Yourself Questions**: Automatically selects the highest rating integer (`5` on 1–5 scale, `10` on 1–10 scale, or "Expert").
   - **Previous Employer Check**: Always selects `No` for questions asking if you previously worked at the hiring organization.
+  - **Work Mode & Commute**: Always answers `Yes` to commuting to job location, hybrid, WFO, and onsite arrangements.
+  - **Job Requirements & Eligibility**: Always answers `Yes` to meeting JD requirements, reading the JD, and location/role eligibility.
+  - **Specific Technologies & Skills**: Answers `Yes` to working with specific technologies (in string fields, dropdowns, radios, or ticks checkboxes); returns `2` when numeric years are asked.
   - **Consent & Declarations**: Automatically agrees/consents (`Yes`) to terms, declarations, and data processing.
 - **Browser Automation (Playwright + Stealth Chrome)**:
   - Runs in real Google Chrome using a persistent profile (`browser_profile/`) to preserve authenticated LinkedIn and Indeed sessions without triggering bot detection or CAPTCHAs.
   - **Anti-Flicker & Smooth Filling**: Form inputs are focused and filled atomically with event dispatching without viewport jumping or focus fighting.
   - **Dropdown & Combobox Support**: Handles standard `<select>` as well as modern custom comboboxes (`input[role="combobox"]`, `div.fb-dropdown`, `button[aria-haspopup="listbox"]`).
-  - **Cover Letter & Resume Upload**: Detects optional "Add cover letter" triggers and uploads `coverLetter.pdf` and `Resume.pdf` to their respective inputs.
+  - **Resume Upload**: Attaches `Resume.pdf` to resume file inputs (cover letter uploads are disabled).
+  - **Comprehensive Checkbox Automation**: Automatically ticks mandatory "I consent", terms, declaration, technology/skill, commute, and qualification checkboxes.
   - **Company Follow Opt-Out**: Automatically unchecks the LinkedIn *"Follow company to stay up to date"* checkbox before submitting.
 - **Queue Deduplication & SQLite Audit**:
   - Normalizes platform job keys (`linkedin_<id>`, `indeed_<jk>`) and prevents duplicate attempts for submitted, already-applied, or skipped roles.

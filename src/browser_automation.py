@@ -124,49 +124,74 @@ class JobApplicationBrowser:
     def _is_field_required(self, container, element) -> bool:
         """
         Determines if a form field is required (has an asterisk '*' or required attribute).
-        Skips optional fields.
+        Skips optional fields, while ensuring mandatory screening questions are filled.
         """
         try:
-            # 1. Check HTML5 and ARIA required attributes
+            elem_id = element.get_attribute("id") or ""
+            aria = (element.get_attribute("aria-label") or "").lower()
+            name = (element.get_attribute("name") or "").lower()
+            desc = f"{elem_id} {name} {aria}".lower()
+
+            # Rule: Keep middle name empty
+            if any(k in desc for k in ["middle name", "middlename"]):
+                return False
+
+            # Explicitly marked optional in aria
+            if "(optional)" in aria or "optional" in aria:
+                return False
+
+            # Check label for (optional)
+            if elem_id:
+                lbl = container.locator(f"xpath=//label[@for='{elem_id}']")
+                if lbl.count() > 0:
+                    lbl_text = lbl.first.inner_text().lower()
+                    if "(optional)" in lbl_text or "optional" in lbl_text:
+                        return False
+                    if "*" in lbl_text or "(required)" in lbl_text or "required" in lbl_text:
+                        return True
+
+            # Check HTML5 and ARIA required attributes
             if element.get_attribute("required") is not None:
                 return True
             if element.get_attribute("aria-required") == "true":
                 return True
 
-            # 2. Check label text
-            elem_id = element.get_attribute("id")
-            if elem_id:
-                lbl = container.locator(f"xpath=//label[@for='{elem_id}']")
-                if lbl.count() > 0:
-                    lbl_text = lbl.first.inner_text().strip()
-                    if "*" in lbl_text or "(required)" in lbl_text.lower():
-                        return True
-                    if "(optional)" in lbl_text.lower() or "optional" in lbl_text.lower():
-                        return False
-
-            # 3. Check aria-label
-            aria = element.get_attribute("aria-label") or ""
-            if "*" in aria or "(required)" in aria.lower() or "required" in aria.lower():
+            if "*" in aria or "(required)" in aria or "required" in aria:
                 return True
-            if "(optional)" in aria.lower() or "optional" in aria.lower():
-                return False
 
-            # 4. Check parent wrapper / form group
+            # Check parent wrapper / form group
             try:
                 parent = element.locator("xpath=ancestor::div[contains(@class, 'form') or contains(@class, 'fb-') or contains(@class, 'component') or contains(@class, 'ia-') or contains(@class, 'artdeco-')][1]")
                 if parent.count() > 0:
-                    parent_text = parent.inner_text().split("\n")[0].strip()
-                    parent_html = parent.evaluate("el => el.innerHTML")
+                    parent_text = parent.inner_text().lower()
+                    parent_html = parent.evaluate("el => el.innerHTML").lower()
                     
-                    if "(optional)" in parent_text.lower() or "(optional)" in parent_html.lower():
+                    if "(optional)" in parent_text or "(optional)" in parent_html:
                         return False
                         
-                    if "*" in parent_text or "(required)" in parent_text.lower() or "required" in parent_html.lower() or "asterisk" in parent_html.lower():
+                    if "*" in parent_text or "(required)" in parent_text or "required" in parent_html or "asterisk" in parent_html or "is-required" in parent_html:
                         return True
             except Exception:
                 pass
 
-        except Exception as e:
+            # Check label prompt question
+            label_text = self._get_input_label(container, element).lower()
+            if "(optional)" in label_text:
+                return False
+            if "*" in label_text or "required" in label_text:
+                return True
+
+            # Screening topics in application forms are required by default unless marked optional
+            mandatory_screening_topics = [
+                "experience", "years", "ctc", "salary", "notice", "join", "commute",
+                "hybrid", "onsite", "wfo", "eligible", "authorized", "visa", "sponsorship",
+                "rate yourself", "proficiency", "worked with", "worked on", "requirement",
+                "qualification", "jd", "job description"
+            ]
+            if any(t in label_text for t in mandatory_screening_topics):
+                return True
+
+        except Exception:
             pass
 
         return False
@@ -214,7 +239,9 @@ class JobApplicationBrowser:
                 if field_key and field_key in filled_ids:
                     continue
 
-                answer = self.rag.answer_screening_question(question)
+                tag_type = inp.get_attribute("type") or "text"
+                is_number = (tag_type == "number") or any(w in question.lower() for w in ["how many", "years", "number of", "days", "rating", "scale", "yoe"])
+                answer = self.rag.answer_screening_question(question, input_type="number" if is_number else "text")
                 print(f"    [Input] '{question}' -> Filling: '{answer}'")
 
                 # Clean fill: sets value smoothly and dispatches events
@@ -292,6 +319,15 @@ class JobApplicationBrowser:
             elif ans_lower == "0" or "immediate" in ans_lower:
                 for opt, text, val in opt_data:
                     if any(term in text.lower() for term in ["0", "immediate", "less than", "15 days"]):
+                        sel.select_option(value=val)
+                        return True
+            elif ans_lower == "2":
+                for opt, text, val in opt_data:
+                    nums = re.findall(r'\b\d+\b', text)
+                    if nums and int(nums[0]) == 2:
+                        sel.select_option(value=val)
+                        return True
+                    if any(term in text.lower() for term in ["2", "1-3", "2-3", "2+"]):
                         sel.select_option(value=val)
                         return True
             elif any(w in q_lower for w in ["country code", "calling code", "dial code", "phone code"]) or "india" in ans_lower or "+91" in ans_lower:
@@ -444,6 +480,12 @@ class JobApplicationBrowser:
                                 if answer.lower() in txt or (answer.lower() == "yes" and "yes" in txt) or (answer.lower() == "no" and "no" in txt):
                                     chosen = opt
                                     break
+                                if answer == "0" and any(k in txt for k in ["0", "immediate", "less than", "15 days"]):
+                                    chosen = opt
+                                    break
+                                if answer == "2" and any(k in txt for k in ["2", "1-3", "2-3", "2+"]):
+                                    chosen = opt
+                                    break
                         if not chosen and options:
                             chosen = options[0]
 
@@ -512,41 +554,30 @@ class JobApplicationBrowser:
                         filled_ids.add(legend)
                         time.sleep(0.15)
                         break
+                    if answer == "0" and any(k in radio_label for k in ["0", "immediate", "less than", "15 days"]):
+                        print(f"    [Radio Joining] '{legend}' -> Checking: '{radio_label}'")
+                        radio.check(force=True)
+                        filled_ids.add(legend)
+                        time.sleep(0.15)
+                        break
+                    if answer == "2" and any(k in radio_label for k in ["2", "1-3", "2-3", "2+"]):
+                        print(f"    [Radio YOE] '{legend}' -> Checking: '{radio_label}'")
+                        radio.check(force=True)
+                        filled_ids.add(legend)
+                        time.sleep(0.15)
+                        break
             except Exception as e:
                 print(f"    [Radio Error] {e}")
 
     def _handle_file_uploads(self, container):
         """
-        Uploads candidate resume and cover letter.
-        Detects optional 'Add cover letter' buttons and attaches coverLetter.pdf when requested.
+        Uploads candidate resume if file input is present.
+        Cover letter uploading is disabled per user preference.
         """
         resume_path = get_resume_path()
-        cover_path = get_cover_letter_path()
-
-        # Check for optional buttons that reveal a cover letter upload input
-        cover_triggers = [
-            "button:has-text('Add cover letter')",
-            "button:has-text('Upload cover letter')",
-            "button:has-text('Attach cover letter')",
-            "label:has-text('Upload cover letter')",
-            "label:has-text('Add cover letter')",
-            "button[aria-label*='cover letter']",
-            "button[aria-label*='Cover letter']"
-        ]
-        for trig in cover_triggers:
-            try:
-                btn = container.locator(trig).first
-                if btn.count() > 0 and btn.is_visible():
-                    print("    [Upload] Clicking 'Add cover letter' button to reveal upload input...")
-                    btn.click()
-                    time.sleep(0.5)
-                    break
-            except Exception:
-                pass
-
         file_inputs = container.locator("input[type='file']").all()
 
-        for idx, finp in enumerate(file_inputs):
+        for finp in file_inputs:
             try:
                 finp_id = finp.get_attribute("id") or ""
                 finp_name = finp.get_attribute("name") or ""
@@ -554,86 +585,167 @@ class JobApplicationBrowser:
                 lbl = self._get_input_label(container, finp)
                 desc = f"{finp_id} {finp_name} {finp_aria} {lbl}".lower()
 
-                # Determine whether this input is for Cover Letter or Resume
-                if any(k in desc for k in ["cover", "letter", "coverletter"]) or (len(file_inputs) > 1 and idx == 1):
-                    if cover_path.exists():
-                        print(f"    [Upload] Attaching Cover Letter: {cover_path.name}")
-                        finp.set_input_files(str(cover_path))
-                        time.sleep(0.5)
-                else:
-                    if resume_path.exists():
-                        print(f"    [Upload] Attaching Resume: {resume_path.name}")
-                        finp.set_input_files(str(resume_path))
-                        time.sleep(0.5)
+                # Skip any inputs specifically asking for a cover letter
+                if any(k in desc for k in ["cover", "letter", "coverletter"]):
+                    print(f"    [Upload] Skipping cover letter input (disabled per preference)")
+                    continue
+
+                if resume_path.exists():
+                    print(f"    [Upload] Attaching Resume: {resume_path.name}")
+                    finp.set_input_files(str(resume_path))
+                    time.sleep(0.5)
             except Exception as e:
                 print(f"    [Upload Error] {e}")
 
-    def _fill_consent_checkboxes(self, container, filled_ids: Set[str]):
+    def _fill_consent_checkboxes(self, container, page: Page, filled_ids: Set[str] = None):
         """
-        Detects and ticks required consent, agreement, and certification checkboxes.
-        Strictly ignores the 'Follow company' checkbox.
+        Detects and ticks required consent, agreements, technology/skills, commute,
+        hybrid/onsite, and qualification checkboxes.
+        Strictly ignores and unchecks the 'Follow company' checkbox.
         """
         try:
-            checkboxes = container.locator("input[type='checkbox']").all()
-            for cb in checkboxes:
+            # 1. Primary Strategy: In-page DOM evaluation to locate & click checkboxes/labels
+            page.evaluate("""() => {
+                const inputs = Array.from(document.querySelectorAll("input[type='checkbox']"));
+                for (const inp of inputs) {
+                    const id = (inp.id || "").toLowerCase();
+                    const name = (inp.name || "").toLowerCase();
+                    const label = document.querySelector(`label[for='${inp.id}']`) || inp.closest("label");
+                    const labelText = label ? label.innerText.toLowerCase() : "";
+                    const parentText = inp.parentElement ? inp.parentElement.innerText.toLowerCase() : "";
+                    const fullDesc = (id + " " + name + " " + labelText + " " + parentText).toLowerCase();
+
+                    // Never tick the "Follow company" or negative exclusion checkboxes
+                    const isExcluded = fullDesc.includes("follow") || id.includes("follow") || name.includes("follow") ||
+                                       fullDesc.includes("stay up to date") ||
+                                       fullDesc.includes("previously worked") || fullDesc.includes("former employee") ||
+                                       fullDesc.includes("sponsorship") || fullDesc.includes("serving notice") ||
+                                       fullDesc.includes("serving np") || fullDesc.includes("decline") ||
+                                       fullDesc.includes("opt out");
+                    if (isExcluded) continue;
+
+                    const isConsent = fullDesc.includes("consent") || 
+                                     fullDesc.includes("agree") || 
+                                     fullDesc.includes("terms") || 
+                                     fullDesc.includes("privacy") || 
+                                     fullDesc.includes("certify") || 
+                                     fullDesc.includes("acknowledge") ||
+                                     fullDesc.includes("declare") ||
+                                     fullDesc.includes("truthful");
+
+                    const isRequired = inp.required || 
+                                       inp.getAttribute("aria-required") === "true" ||
+                                       fullDesc.includes("required") ||
+                                       fullDesc.includes("*");
+
+                    const isTechOrSkill = fullDesc.includes("python") || fullDesc.includes("aws") || fullDesc.includes("docker") ||
+                                          fullDesc.includes("kubernetes") || fullDesc.includes("sql") || fullDesc.includes("react") ||
+                                          fullDesc.includes("java") || fullDesc.includes("c#") || fullDesc.includes("git") ||
+                                          fullDesc.includes("devops") || fullDesc.includes("ci/cd") || fullDesc.includes("experience") ||
+                                          fullDesc.includes("skill") || fullDesc.includes("technology") || fullDesc.includes("technologies") ||
+                                          fullDesc.includes("worked with") || fullDesc.includes("worked on");
+
+                    const isEligibility = fullDesc.includes("commute") || fullDesc.includes("hybrid") || fullDesc.includes("onsite") ||
+                                          fullDesc.includes("wfo") || fullDesc.includes("eligible") || fullDesc.includes("requirements") ||
+                                          fullDesc.includes("qualifications") || fullDesc.includes("jd") || fullDesc.includes("authorized");
+
+                    const inQuestionGroup = inp.closest("fieldset, .jobs-easy-apply-form-section__grouping, .fb-form-element, [data-test-form-element], .ia-Questions-item") !== null;
+
+                    if (isConsent || isRequired || isTechOrSkill || isEligibility || inQuestionGroup) {
+                        if (!inp.checked) {
+                            if (label) {
+                                label.click();
+                            } else {
+                                inp.click();
+                            }
+                            inp.checked = true;
+                            inp.dispatchEvent(new Event('input', { bubbles: true }));
+                            inp.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    }
+                }
+
+                // Check for standalone visible labels with text like 'I consent' or 'I agree'
+                const labels = Array.from(document.querySelectorAll("label, span.artdeco-checkbox__label"));
+                for (const lbl of labels) {
+                    const txt = (lbl.innerText || "").toLowerCase().trim();
+                    if (txt.includes("follow") || txt.includes("previously worked") || txt.includes("sponsorship")) continue;
+                    
+                    if (txt === "i consent" || txt === "i agree" || txt.startsWith("i consent") || txt.startsWith("i agree") || txt.includes("consent") || txt.includes("terms and conditions")) {
+                        const parent = lbl.closest(".artdeco-checkbox") || lbl.closest("label") || lbl;
+                        const input = parent.querySelector("input[type='checkbox']") || 
+                                      (lbl.htmlFor ? document.querySelector(`#${lbl.htmlFor}`) : null);
+                        if (!input || !input.checked) {
+                            lbl.click();
+                            if (input) {
+                                input.checked = true;
+                                input.dispatchEvent(new Event('change', { bubbles: true }));
+                            }
+                        }
+                    }
+                }
+            }""")
+            time.sleep(0.2)
+
+            # 2. Secondary Strategy: Playwright locators for labels containing "I consent", "consent", "I agree"
+            consent_label_selectors = [
+                "label:has-text('I consent')",
+                "label:has-text('consent')",
+                "label:has-text('I agree')",
+                "label:has-text('agree to')",
+                "span.artdeco-checkbox__label:has-text('consent')",
+                "span.artdeco-checkbox__label:has-text('agree')"
+            ]
+            for scope in [container, page]:
+                for sel in consent_label_selectors:
+                    try:
+                        labels = scope.locator(sel).all()
+                        for lbl in labels:
+                            if not lbl.is_visible():
+                                continue
+                            txt = lbl.inner_text().lower().strip()
+                            if "follow" in txt or "previously worked" in txt or "sponsorship" in txt:
+                                continue
+                            
+                            for_id = lbl.get_attribute("for")
+                            is_checked = False
+                            if for_id:
+                                inp = scope.locator(f"#{for_id}").first
+                                if inp.count() > 0:
+                                    is_checked = inp.is_checked()
+                            else:
+                                inp = lbl.locator("input[type='checkbox']").first
+                                if inp.count() > 0:
+                                    is_checked = inp.is_checked()
+
+                            if not is_checked:
+                                print(f"    [Checkbox Consent] Clicking consent label: '{lbl.inner_text().strip()[:50]}'")
+                                lbl.click(force=True)
+                                time.sleep(0.2)
+                    except Exception:
+                        continue
+
+            # 3. Direct check on all input[type='checkbox'] elements (with force=True even if hidden)
+            for scope in [container, page]:
                 try:
-                    if not cb.is_visible():
-                        continue
+                    cbs = scope.locator("input[type='checkbox']").all()
+                    for cb in cbs:
+                        try:
+                            cb_id = cb.get_attribute("id") or ""
+                            desc = (cb_id + " " + (cb.get_attribute("name") or "") + " " + (cb.get_attribute("aria-label") or "")).lower()
+                            if "follow" in desc or cb_id == "follow-company-checkbox" or any(ex in desc for ex in ["previously worked", "former employee", "sponsorship", "serving notice", "decline", "opt out"]):
+                                continue
+                            if not cb.is_checked():
+                                print(f"    [Checkbox] Force checking input: #{cb_id}")
+                                cb.check(force=True)
+                                time.sleep(0.15)
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
 
-                    cb_id = cb.get_attribute("id") or ""
-                    cb_name = cb.get_attribute("name") or ""
-                    cb_aria = cb.get_attribute("aria-label") or ""
-                    lbl = self._get_input_label(container, cb)
-                    desc = f"{cb_id} {cb_name} {cb_aria} {lbl}".lower()
-
-                    # Never tick the "Follow company" checkbox
-                    if "follow" in desc or cb_id == "follow-company-checkbox":
-                        continue
-
-                    field_key = f"cb_{cb_id}_{cb_name}_{cb_aria}_{lbl[:20]}"
-                    if field_key in filled_ids:
-                        continue
-
-                    # Check if this checkbox is for consent, terms, policy, or is required
-                    is_consent = any(term in desc for term in [
-                        "consent", "agree", "terms", "privacy", "certify", "acknowledge",
-                        "confirm", "declare", "declaration", "policy", "truthful", "accurate",
-                        "authorization", "authorize", "understand", "background check"
-                    ])
-                    is_required = (
-                        cb.get_attribute("required") is not None 
-                        or cb.get_attribute("aria-required") == "true" 
-                        or "required" in desc
-                    )
-
-                    if is_consent or is_required:
-                        if not cb.is_checked():
-                            print(f"    [Checkbox Consent] Ticking consent box: '{lbl[:60]}'")
-                            cb.check(force=True)
-                            time.sleep(0.15)
-                        filled_ids.add(field_key)
-
-                except Exception as e:
-                    print(f"    [Checkbox Item Error] {e}")
-
-            # Also check for custom role='checkbox' elements (divs or buttons)
-            custom_cbs = container.locator("div[role='checkbox'], button[role='checkbox']").all()
-            for ccb in custom_cbs:
-                try:
-                    if not ccb.is_visible():
-                        continue
-                    lbl = self._get_input_label(container, ccb) or ccb.inner_text().strip()
-                    desc = lbl.lower()
-                    if "follow" in desc:
-                        continue
-                    if any(term in desc for term in ["consent", "agree", "terms", "privacy", "certify", "acknowledge"]):
-                        is_checked = ccb.get_attribute("aria-checked") == "true"
-                        if not is_checked:
-                            print(f"    [Custom Checkbox Consent] Clicking: '{lbl[:60]}'")
-                            ccb.click(force=True)
-                            time.sleep(0.15)
-                except Exception as e:
-                    print(f"    [Custom Checkbox Error] {e}")
+            # Final check: always ensure follow company checkbox remains unchecked
+            self._uncheck_follow_company(container, page)
 
         except Exception as e:
             print(f"    [Consent Checkboxes Error] {e}")
@@ -827,7 +939,7 @@ class JobApplicationBrowser:
                 self._fill_select_dropdowns(container, filled_ids)
                 self._fill_custom_comboboxes(container, filled_ids)
                 self._fill_radio_buttons(container, filled_ids)
-                self._fill_consent_checkboxes(container, filled_ids)
+                self._fill_consent_checkboxes(container, apply_page, filled_ids)
                 self._handle_file_uploads(container)
                 self._uncheck_follow_company(container, apply_page)
                 time.sleep(0.8)
@@ -891,7 +1003,7 @@ class JobApplicationBrowser:
                 if submit_btn:
                     print(f"Reached final step! 'Submit' button is visible on {platform_name}.")
                     # Ensure any final consent / agreement checkbox is ticked
-                    self._fill_consent_checkboxes(container, filled_ids)
+                    self._fill_consent_checkboxes(container, apply_page, filled_ids)
                     # Always uncheck the 'Follow company' checkbox before submitting
                     self._uncheck_follow_company(container, apply_page)
                     time.sleep(0.3)

@@ -84,7 +84,7 @@ class ProfileRAG:
 {self.cover_letter_text if self.cover_letter_text else "[Cover letter not attached yet]"}
 """
 
-    def answer_screening_question(self, question: str) -> str:
+    def answer_screening_question(self, question: str, input_type: str = "text") -> str:
         """
         Answers a specific application form question using structured profile + resume context.
         """
@@ -123,22 +123,80 @@ class ProfileRAG:
         if "portfolio" in q_lower or "website" in q_lower:
             return str(personal.get("portfolio_url", "N/A"))
 
-        # Location checks
-        has_state = bool(re.search(r'\bstate\b', q_lower))
-        has_city = bool(re.search(r'\bcity\b', q_lower))
-        has_location_kw = any(w in q_lower for w in ["current location", "location", "address", "postal", "pincode", "zip"]) or has_state or has_city
-        if has_location_kw:
-            city = personal.get("city", "")
-            state = personal.get("state", "")
-            country = personal.get("country", "")
-            postal = personal.get("postal_code", "451001")
-            if any(w in q_lower for w in ["pincode", "postal", "zip"]):
-                return str(postal)
-            if has_state and not has_city:
-                return state
-            if has_city and not has_state and "country" not in q_lower:
-                return city
-            return f"{city}, {state}, {country}".strip(", ")
+        # -------------------------------------------------------------
+        # TOP-PRIORITY SCREENING RULES (COMMUTE, WORK MODE, ELIGIBILITY)
+        # Evaluated BEFORE location checks so words like "location" do not trigger address returns.
+        # -------------------------------------------------------------
+
+        # 1. Commute to job location -> ALWAYS "Yes"
+        commute_indicators = [
+            "commuting", "commute to", "okay commuting", "willing to commute", "able to commute",
+            "reliably commute", "comfortably commute", "travel to the job", "commute daily",
+            "comfortable commuting", "willing to travel", "commute to work", "okay to commute",
+            "commute to this", "commute"
+        ]
+        if any(ind in q_lower for ind in commute_indicators):
+            return "Yes"
+
+        # 2. Work mode (Hybrid, WFO, Onsite) -> ALWAYS "Yes"
+        work_mode_indicators = [
+            "hybrid", "wfo", "work from office", "onsite", "on-site", "in-office",
+            "in office", "work from the office", "working from office", "office-based",
+            "physical office", "work in office", "work in the office", "hybrid setup",
+            "hybrid model"
+        ]
+        if any(ind in q_lower for ind in work_mode_indicators):
+            return "Yes"
+
+        # 3. Location eligibility, authorization, and comfort -> ALWAYS "Yes"
+        location_eligible_indicators = [
+            "eligible to work in this location", "eligible to work in", "authorized to work in this location",
+            "authorized to work in", "permitted to work in this location", "permitted to work in",
+            "comfortable with the job location", "comfortable with this location", "comfortable with the location",
+            "willing to work in", "open to working in", "okay working in", "okay to work in",
+            "can you work in", "able to work in", "work in this location", "work at this location",
+            "comfortable working in", "ready to work in", "relocate", "willing to relocate"
+        ]
+        if any(ind in q_lower for ind in location_eligible_indicators):
+            return "Yes"
+
+        # 4. Job Requirements / Read JD / Role Eligibility -> ALWAYS "Yes"
+        jd_eligible_indicators = [
+            "meet job requirements", "meet the job requirements", "meet requirements",
+            "meet all requirements", "meet the requirements", "read jd", "read the jd",
+            "read job description", "read the job description", "have you read the jd",
+            "did you read", "eligible for this role", "eligible for the role",
+            "eligible for this position", "eligible for this job", "eligible to apply",
+            "qualified for this role", "qualified for this position", "meet minimum qualifications",
+            "meet basic qualifications", "reviewed the job description",
+            "understand the job requirements", "possess the required skills",
+            "fulfill the criteria", "meet the criteria", "confirm you meet",
+            "fit for this role"
+        ]
+        if any(ind in q_lower for ind in jd_eligible_indicators):
+            return "Yes"
+
+        # -------------------------------------------------------------
+        # RESIDENCE & LOCATION (STREET, CITY, STATE, PINCODE)
+        # Only returned for explicit residence/address fields, NOT Yes/No questions.
+        # -------------------------------------------------------------
+        is_yes_no_question = any(q_lower.startswith(w) for w in ["are you", "do you", "can you", "will you", "would you", "is it okay", "have you", "were you"])
+        if not is_yes_no_question:
+            has_state = bool(re.search(r'\bstate\b', q_lower))
+            has_city = bool(re.search(r'\bcity\b', q_lower))
+            has_location_kw = any(w in q_lower for w in ["current location", "your location", "present location", "home location", "address", "street", "postal", "pincode", "zip"]) or has_state or has_city
+            if has_location_kw:
+                city = personal.get("city", "Khargone")
+                state = personal.get("state", "Madhya Pradesh")
+                country = personal.get("country", "India")
+                postal = personal.get("postal_code", "451001")
+                if any(w in q_lower for w in ["pincode", "postal", "zip"]):
+                    return str(postal)
+                if has_state and not has_city:
+                    return state
+                if has_city and not has_state and "country" not in q_lower:
+                    return city
+                return f"{city}, {state}, {country}".strip(", ")
 
         # Work experience details (Company, Title)
         work_exp = self.profile_data.get("work_experience", {})
@@ -216,18 +274,36 @@ class ProfileRAG:
                     return str(round(int(exp_sal) / 100000)) if len(exp_sal) >= 6 else exp_sal
                 return exp_sal
 
-        # Notice period / Immediate joiner / Serving NP / Days left -> Always '0'
-        np_indicators = [
-            "serving your np", "notice period", "immediate joiner", "days left",
-            "np or", "serving np", "how many days notice", "notice days", "period in days"
+        # -------------------------------------------------------------
+        # NOTICE PERIOD & JOINING DAYS RULES
+        # -------------------------------------------------------------
+        # 1. Serving notice period -> ALWAYS "No"
+        serving_np_indicators = [
+            "serving notice period", "serving a notice period", "serving your notice period",
+            "currently serving notice", "currently serving your notice", "are you serving notice",
+            "are you serving your np", "serving np", "serving your np", "on notice period",
+            "currently on notice", "serving notice"
         ]
-        if any(w in q_lower for w in np_indicators):
+        if any(ind in q_lower for ind in serving_np_indicators):
+            return "No"
+
+        # 2. Immediate joiner -> ALWAYS "Yes"
+        if any(w in q_lower for w in ["immediate joiner", "can you join immediately", "available to join immediately", "join immediately"]):
+            return "Yes"
+
+        # 3. How many days can you join / notice period in days -> ALWAYS "0"
+        joining_days_indicators = [
+            "how many days can you join", "days can you join", "in how many days can you join",
+            "days required to join", "how soon can you join", "how many days to join",
+            "notice period in days", "notice period (in days)", "notice period days",
+            "notice days", "period in days", "days notice", "how many days notice",
+            "notice period", "days left"
+        ]
+        if any(w in q_lower for w in joining_days_indicators):
             return "0"
 
         if "start date" in q_lower or "earliest start" in q_lower:
             return str(prefs.get("earliest_start_date", "Immediately"))
-        if "relocate" in q_lower:
-            return "Yes" if prefs.get("willing_to_relocate", True) else "No"
 
         # "Rate yourself" / Proficiency rating -> ALWAYS return highest integer
         rating_indicators = [
@@ -246,26 +322,45 @@ class ProfileRAG:
                 return "3"
             return "5"
 
-        # USER RULE: Any experience / years question in any technology -> ALWAYS return "2"
-        exp_question_indicators = [
-            "how many years", "years of experience", "total exp", "exp in", 
-            "experience in", "experience with", "years experience", "yoe",
-            "hands-on experience", "relevant experience", "work experience"
+        # -------------------------------------------------------------
+        # EXPERIENCE & TECHNOLOGY QUESTIONS
+        # -------------------------------------------------------------
+        # 1. Numeric Years of Experience -> ALWAYS "2"
+        years_indicators = [
+            "how many years", "years of experience", "total years", "years experience",
+            "number of years", "total exp", "yoe", "years of hands-on", "years hands-on"
         ]
-        if any(ind in q_lower for ind in exp_question_indicators):
+        if any(ind in q_lower for ind in years_indicators):
             return "2"
+
+        # 2. Specific technology experience / worked on technology -> ALWAYS "Yes"
+        tech_work_indicators = [
+            "have you worked", "have you used", "do you have experience", "experience in",
+            "experience with", "hands-on experience", "hands on experience", "familiar with",
+            "knowledge of", "worked with", "worked on", "proficient in", "proficiency in",
+            "experience using", "prior experience with", "prior experience in"
+        ]
+        if any(ind in q_lower for ind in tech_work_indicators):
+            if input_type in ["number", "numeric"]:
+                return "2"
+            return "Yes"
+
+        # 3. Direct technology names in questions -> ALWAYS "Yes" (or "2" if numeric)
+        tech_keywords = [
+            "python", "aws", "docker", "kubernetes", "c#", ".net", "react", "sql", "git",
+            "ci/cd", "devops", "java", "node", "javascript", "typescript", "golang", "linux",
+            "rest api", "microservices", "cloud", "terraform", "jenkins", "nosql", "mongodb",
+            "postgresql", "mysql", "redis", "kafka", "azure", "gcp"
+        ]
+        if any(t in q_lower for t in tech_keywords):
+            if input_type in ["number", "numeric"]:
+                return "2"
+            return "Yes"
 
         # Education degree
         if any(w in q_lower for w in ["degree", "highest qualification", "highest education", "education level"]):
             return "Bachelor's Degree"
 
-        # Technical skill check against resume text
-        tech_keywords = ["python", "aws", "docker", "kubernetes", "c#", ".net", "react", "sql", "git", "ci/cd", "devops"]
-        matched_tech = [t for t in tech_keywords if t in q_lower]
-        if matched_tech:
-            found_in_resume = all(t in self.resume_text.lower() for t in matched_tech)
-            if found_in_resume:
-                return "Yes"
 
         # LLM fallback if API key is configured
         gemini_api_key = os.environ.get("GEMINI_API_KEY")

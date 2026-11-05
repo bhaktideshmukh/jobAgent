@@ -121,8 +121,105 @@ def test_all():
     print(f"  [PASS] 'Country Code' -> '{cc_ans}'")
     print(f"  [PASS] 'Middle Name' -> '{mid_ans}' (Kept empty)")
 
+    # 11. Test 7 Specific User Failure Observations
+    print("\n--- 11. Verification for 7 Newly Reported Observations ---")
+
+    # Obs 1: Commuting to job location -> ALWAYS "Yes"
+    commute_qs = [
+        "Are you okay commuting to job location?",
+        "Are you willing to commute to this location?",
+        "Can you reliably commute to work daily?",
+        "Comfortable commuting to office location?"
+    ]
+    for q in commute_qs:
+        ans = rag.answer_screening_question(q)
+        assert ans == "Yes", f"Obs 1 Failed: Expected 'Yes' for '{q}', got '{ans}'"
+        print(f"  [PASS Obs 1 Commute] '{q}' -> {ans}")
+
+    # Obs 2: Job requirements / Read JD / Role eligibility -> ALWAYS "Yes"
+    jd_qs = [
+        "Do you meet job requirements?",
+        "Did you read JD?",
+        "Have you read the job description?",
+        "Are you eligible for this role?",
+        "Do you meet the basic qualifications?"
+    ]
+    for q in jd_qs:
+        ans = rag.answer_screening_question(q)
+        assert ans == "Yes", f"Obs 2 Failed: Expected 'Yes' for '{q}', got '{ans}'"
+        print(f"  [PASS Obs 2 JD/Eligibility] '{q}' -> {ans}")
+
+    # Obs 3: Specific technology worked on -> ALWAYS "Yes" (or "2" if numeric years)
+    tech_qs = [
+        "Have you worked on Python?",
+        "Do you have experience with AWS?",
+        "Have you worked with Docker?",
+        "Hands-on experience in SQL?",
+        "Knowledge of Kubernetes?"
+    ]
+    for q in tech_qs:
+        ans = rag.answer_screening_question(q)
+        assert ans == "Yes", f"Obs 3 Failed: Expected 'Yes' for '{q}', got '{ans}'"
+        print(f"  [PASS Obs 3 Tech Worked On] '{q}' -> {ans}")
+    tech_numeric = rag.answer_screening_question("How many years of experience in Python?", input_type="number")
+    assert tech_numeric == "2", f"Obs 3 Failed: Expected '2' for YOE, got '{tech_numeric}'"
+    print(f"  [PASS Obs 3 Tech YOE] 'Years in Python' -> {tech_numeric}")
+
+    # Obs 4: Hybrid, WFO, Onsite -> ALWAYS "Yes"
+    work_mode_qs = [
+        "This is a hybrid role, are you okay with that?",
+        "Are you comfortable with work from office (WFO)?",
+        "Can you work onsite at our Bangalore office?",
+        "Comfortable with hybrid setup?"
+    ]
+    for q in work_mode_qs:
+        ans = rag.answer_screening_question(q)
+        assert ans == "Yes", f"Obs 4 Failed: Expected 'Yes' for '{q}', got '{ans}'"
+        print(f"  [PASS Obs 4 Work Mode] '{q}' -> {ans}")
+
+    # Obs 5: Are you serving notice period -> ALWAYS "No"
+    serving_np_qs = [
+        "Are you serving notice period?",
+        "Are you currently serving your notice period?",
+        "Serving notice period?",
+        "Are you on notice period?"
+    ]
+    for q in serving_np_qs:
+        ans = rag.answer_screening_question(q)
+        assert ans == "No", f"Obs 5 Failed: Expected 'No' for '{q}', got '{ans}'"
+        print(f"  [PASS Obs 5 Serving NP] '{q}' -> {ans}")
+
+    # Obs 6: How many days can you join (integer) -> ALWAYS "0"
+    joining_qs = [
+        "How many days can you join?",
+        "In how many days can you join?",
+        "How many days can you join (integer)?",
+        "Days required to join?"
+    ]
+    for q in joining_qs:
+        ans = rag.answer_screening_question(q)
+        assert ans == "0", f"Obs 6 Failed: Expected '0' for '{q}', got '{ans}'"
+        print(f"  [PASS Obs 6 Joining Days] '{q}' -> {ans}")
+
+    # Obs 7: Location eligibility -> ALWAYS "Yes"
+    loc_eligible_qs = [
+        "Are you eligible to work in this location?",
+        "Eligible to work in India?",
+        "Authorized to work in this location?",
+        "Comfortable with the job location?"
+    ]
+    for q in loc_eligible_qs:
+        ans = rag.answer_screening_question(q)
+        assert ans == "Yes", f"Obs 7 Failed: Expected 'Yes' for '{q}', got '{ans}'"
+        print(f"  [PASS Obs 7 Location Eligibility] '{q}' -> {ans}")
+
+    # Address sanity check: Explicit residence questions still return address
+    residence_q = rag.answer_screening_question("What is your current location?")
+    assert "Khargone" in residence_q, f"Expected Khargone in current location, got '{residence_q}'"
+    print(f"  [PASS Residence Check] 'Current location' -> {residence_q}")
+
     print("\n" + "=" * 70)
-    print("ALL VERIFICATIONS (INCLUDING PREVIOUS EMPLOYER, CONSENT, CC & MIDDLE NAME) PASSED!")
+    print("ALL VERIFICATIONS (INCLUDING 7 NEW USER OBSERVATIONS) PASSED!")
     print("=" * 70)
 
 if __name__ == "__main__":
