@@ -95,6 +95,8 @@ class ProfileRAG:
         prefs = self.profile_data.get("work_preferences", {})
 
         # Name checks
+        if "middle name" in q_lower or "middle initial" in q_lower:
+            return ""
         if "first name" in q_lower:
             return personal.get("full_name", "").split()[0]
         if "last name" in q_lower:
@@ -103,7 +105,9 @@ class ProfileRAG:
         if "full name" in q_lower or q_lower == "name" or "your name" in q_lower:
             return str(personal.get("full_name", ""))
 
-        # Contact info
+        # Contact info & Country Code
+        if any(w in q_lower for w in ["country code", "calling code", "dial code", "country calling code"]):
+            return personal.get("country_code", "+91")
         if "email" in q_lower:
             return str(personal.get("email", ""))
         if "phone" in q_lower or "mobile" in q_lower or "contact number" in q_lower:

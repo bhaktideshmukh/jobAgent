@@ -121,6 +121,56 @@ class JobApplicationBrowser:
 
         return ""
 
+    def _is_field_required(self, container, element) -> bool:
+        """
+        Determines if a form field is required (has an asterisk '*' or required attribute).
+        Skips optional fields.
+        """
+        try:
+            # 1. Check HTML5 and ARIA required attributes
+            if element.get_attribute("required") is not None:
+                return True
+            if element.get_attribute("aria-required") == "true":
+                return True
+
+            # 2. Check label text
+            elem_id = element.get_attribute("id")
+            if elem_id:
+                lbl = container.locator(f"xpath=//label[@for='{elem_id}']")
+                if lbl.count() > 0:
+                    lbl_text = lbl.first.inner_text().strip()
+                    if "*" in lbl_text or "(required)" in lbl_text.lower():
+                        return True
+                    if "(optional)" in lbl_text.lower() or "optional" in lbl_text.lower():
+                        return False
+
+            # 3. Check aria-label
+            aria = element.get_attribute("aria-label") or ""
+            if "*" in aria or "(required)" in aria.lower() or "required" in aria.lower():
+                return True
+            if "(optional)" in aria.lower() or "optional" in aria.lower():
+                return False
+
+            # 4. Check parent wrapper / form group
+            try:
+                parent = element.locator("xpath=ancestor::div[contains(@class, 'form') or contains(@class, 'fb-') or contains(@class, 'component') or contains(@class, 'ia-') or contains(@class, 'artdeco-')][1]")
+                if parent.count() > 0:
+                    parent_text = parent.inner_text().split("\n")[0].strip()
+                    parent_html = parent.evaluate("el => el.innerHTML")
+                    
+                    if "(optional)" in parent_text.lower() or "(optional)" in parent_html.lower():
+                        return False
+                        
+                    if "*" in parent_text or "(required)" in parent_text.lower() or "required" in parent_html.lower() or "asterisk" in parent_html.lower():
+                        return True
+            except Exception:
+                pass
+
+        except Exception as e:
+            pass
+
+        return False
+
     def _fill_text_inputs(self, container, filled_ids: Set[str]):
         """Fills visible text, number, tel inputs, and textareas smoothly without flickering."""
         inputs = container.locator("input[type='text'], input[type='tel'], input[type='number'], textarea").all()
@@ -134,6 +184,25 @@ class JobApplicationBrowser:
                 inp_aria = inp.get_attribute("aria-label") or ""
                 field_key = f"{inp_id}_{inp_name}_{inp_aria}".strip("_")
 
+                question = self._get_input_label(container, inp) or "Field"
+                desc = f"{inp_id} {inp_name} {inp_aria} {question}".lower()
+
+                # User Rule: Keep 'middle name' field empty
+                if any(k in desc for k in ["middle name", "middlename", "middle initial"]):
+                    if field_key:
+                        filled_ids.add(field_key)
+                    print(f"    [Input] Skipping 'middle name' field (kept empty per rule)")
+                    continue
+
+                # User Rule: Only fill fields that have an asterisk '*' or are required
+                if not self._is_field_required(container, inp):
+                    current_val = inp.input_value().strip()
+                    if current_val:
+                        if field_key:
+                            filled_ids.add(field_key)
+                    print(f"    [Input] Skipping optional field without asterisk: '{question}'")
+                    continue
+
                 current_val = inp.input_value().strip()
 
                 # If already filled with valid input, skip without touching to prevent focus theft & flickering
@@ -145,7 +214,6 @@ class JobApplicationBrowser:
                 if field_key and field_key in filled_ids:
                     continue
 
-                question = self._get_input_label(container, inp) or "Field"
                 answer = self.rag.answer_screening_question(question)
                 print(f"    [Input] '{question}' -> Filling: '{answer}'")
 
@@ -226,10 +294,11 @@ class JobApplicationBrowser:
                     if any(term in text.lower() for term in ["0", "immediate", "less than", "15 days"]):
                         sel.select_option(value=val)
                         return True
-            elif "india" in ans_lower or "+91" in ans_lower:
+            elif any(w in q_lower for w in ["country code", "calling code", "dial code", "phone code"]) or "india" in ans_lower or "+91" in ans_lower:
                 for opt, text, val in opt_data:
-                    if "india" in text.lower() or "+91" in text.lower():
+                    if "+91" in text or "india" in text.lower() or val.lower() == "in":
                         sel.select_option(value=val)
+                        print(f"    [Select Country Code] '{question}' -> Selected: '{text}'")
                         return True
             elif "bachelor" in ans_lower:
                 for opt, text, val in opt_data:
@@ -286,6 +355,22 @@ class JobApplicationBrowser:
                     continue
 
                 question = self._get_input_label(container, combo) or "Combobox"
+                desc = f"{combo_id} {question}".lower()
+
+                # User Rule: Keep 'middle name' field empty
+                if any(k in desc for k in ["middle name", "middlename", "middle initial"]):
+                    if combo_id:
+                        filled_ids.add(combo_id)
+                    print(f"    [Combobox] Skipping 'middle name' field (kept empty per rule)")
+                    continue
+
+                # User Rule: Only fill fields that have an asterisk '*' or are required
+                if not self._is_field_required(container, combo):
+                    if combo_id:
+                        filled_ids.add(combo_id)
+                    print(f"    [Combobox] Skipping optional field without asterisk: '{question}'")
+                    continue
+
                 answer = self.rag.answer_screening_question(question)
                 is_rating = any(term in question.lower() for term in ["rate yourself", "rate your", "rating", "scale of", "proficiency"])
 

@@ -112,8 +112,17 @@ def test_all():
         assert ans == "Yes", f"Expected 'Yes' for '{q}', got '{ans}'"
         print(f"  [PASS] '{q}' -> {ans}")
 
+    # 10. Test Country Code and Middle Name
+    print("\n--- 10. Country Code & Middle Name Rules ---")
+    cc_ans = rag.answer_screening_question("Country Code")
+    mid_ans = rag.answer_screening_question("Middle Name")
+    assert cc_ans == "+91", f"Expected '+91', got '{cc_ans}'"
+    assert mid_ans == "", f"Expected empty string for middle name, got '{mid_ans}'"
+    print(f"  [PASS] 'Country Code' -> '{cc_ans}'")
+    print(f"  [PASS] 'Middle Name' -> '{mid_ans}' (Kept empty)")
+
     print("\n" + "=" * 70)
-    print("ALL VERIFICATIONS (INCLUDING PREVIOUS EMPLOYER & CONSENT) PASSED!")
+    print("ALL VERIFICATIONS (INCLUDING PREVIOUS EMPLOYER, CONSENT, CC & MIDDLE NAME) PASSED!")
     print("=" * 70)
 
 if __name__ == "__main__":
