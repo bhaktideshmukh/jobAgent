@@ -556,68 +556,79 @@ class JobApplicationBrowser:
     def _uncheck_follow_company(self, container, page: Page) -> bool:
         """
         Unchecks the 'Follow company' checkbox on LinkedIn before submitting.
-        Prevents automatically following companies upon application submission.
+        Simulates a real click on the visible label/indicator so LinkedIn's React/Ember state updates.
         """
         try:
-            follow_selectors = [
-                "input[type='checkbox']#follow-company-checkbox",
-                "input[type='checkbox'][id*='follow']",
-                "input[type='checkbox'][name*='follow']",
-                "input[type='checkbox'][aria-label*='Follow']",
-                "input[type='checkbox'][aria-label*='follow']",
-                "label:has-text('Follow') input[type='checkbox']",
-                "label:has-text('follow') input[type='checkbox']"
-            ]
+            # 1. Primary Strategy: Evaluate in browser context and trigger label.click()
+            result = page.evaluate("""() => {
+                const cb = document.querySelector("#follow-company-checkbox") || 
+                           Array.from(document.querySelectorAll("input[type='checkbox']")).find(i => {
+                               const desc = (i.id + ' ' + i.name + ' ' + (i.parentElement ? i.parentElement.innerText : '')).toLowerCase();
+                               return desc.includes('follow') || desc.includes('stay up to date');
+                           });
 
-            # 1. Search in container first, then in full page dialog
+                const label = document.querySelector("label[for='follow-company-checkbox']") || 
+                              Array.from(document.querySelectorAll("label, span, div.artdeco-checkbox")).find(l => {
+                                  const txt = (l.innerText || "").toLowerCase();
+                                  return txt.includes('stay up to date') || (txt.includes('follow') && txt.includes('page'));
+                              });
+
+                let unchecked = false;
+
+                if (cb) {
+                    const isChecked = cb.checked || cb.getAttribute('checked') !== null || cb.getAttribute('aria-checked') === 'true';
+                    if (isChecked) {
+                        if (label) {
+                            label.click();
+                        } else {
+                            cb.click();
+                        }
+                        cb.checked = false;
+                        cb.removeAttribute('checked');
+                        cb.setAttribute('aria-checked', 'false');
+                        cb.dispatchEvent(new Event('change', { bubbles: true }));
+                        cb.dispatchEvent(new Event('input', { bubbles: true }));
+                        unchecked = true;
+                    }
+                } else if (label) {
+                    label.click();
+                    unchecked = true;
+                }
+
+                return {
+                    unchecked: unchecked,
+                    cb_found: !!cb,
+                    label_found: !!label
+                };
+            }""")
+
+            if isinstance(result, dict) and result.get("unchecked"):
+                print(f"    [LinkedIn] Successfully unchecked 'Follow company': {result}")
+                time.sleep(0.3)
+                return True
+
+            # 2. Secondary Strategy: Direct Playwright click on visible label
+            label_locators = [
+                "label[for='follow-company-checkbox']",
+                "label:has-text('stay up to date')",
+                "label:has-text('Follow ')",
+                "div.jobs-easy-apply-footer__follow-company label",
+                "span:has-text('stay up to date')"
+            ]
             for scope in [container, page]:
-                for sel in follow_selectors:
+                for sel in label_locators:
                     try:
-                        checkboxes = scope.locator(sel).all()
-                        for cb in checkboxes:
-                            if cb.is_checked():
-                                print("    [LinkedIn] Detected checked 'Follow company' box. Unchecking...")
-                                cb.uncheck(force=True)
-                                time.sleep(0.2)
-                                if cb.is_checked():
-                                    cb.click(force=True)
-                                    time.sleep(0.2)
+                        loc = scope.locator(sel).first
+                        if loc.count() > 0 and loc.is_visible():
+                            input_el = scope.locator("input#follow-company-checkbox, input[id*='follow']").first
+                            if input_el.count() > 0 and input_el.is_checked():
+                                print(f"    [LinkedIn] Clicking follow label via Playwright: '{sel}'")
+                                loc.click(force=True)
+                                time.sleep(0.3)
                                 return True
                     except Exception:
                         continue
 
-            # 2. Check by label if direct checkbox input was hidden
-            label_selectors = [
-                "label[for='follow-company-checkbox']",
-                "label:has-text('Follow company')",
-                "label:has-text('Follow ')",
-                "label:has-text('follow ')"
-            ]
-            for scope in [container, page]:
-                for sel in label_selectors:
-                    try:
-                        labels = scope.locator(sel).all()
-                        for lbl in labels:
-                            if not lbl.is_visible():
-                                continue
-                            txt = lbl.inner_text().lower()
-                            if "follow" in txt:
-                                inp = lbl.locator("input[type='checkbox']")
-                                if inp.count() > 0 and inp.first.is_checked():
-                                    print(f"    [LinkedIn] Unchecking via label: '{lbl.inner_text().strip()}'")
-                                    lbl.click(force=True)
-                                    time.sleep(0.2)
-                                    return True
-                                for_id = lbl.get_attribute("for")
-                                if for_id:
-                                    inp_by_id = scope.locator(f"#{for_id}")
-                                    if inp_by_id.count() > 0 and inp_by_id.first.is_checked():
-                                        print(f"    [LinkedIn] Unchecking '{for_id}' via label click...")
-                                        lbl.click(force=True)
-                                        time.sleep(0.2)
-                                        return True
-                    except Exception:
-                        continue
         except Exception as e:
             print(f"    [Uncheck Follow Error] {e}")
         return False
@@ -804,6 +815,7 @@ class JobApplicationBrowser:
                     apply_page.screenshot(path=str(review_file))
                     
                     if auto_submit:
+                        self._uncheck_follow_company(container, apply_page)
                         print(f"Clicking 'Submit' on {platform_name}...")
                         submit_btn.click()
                         time.sleep(3)

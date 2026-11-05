@@ -82,32 +82,43 @@ def fetch_easy_apply_jobs(
 ) -> List[Dict[str, Any]]:
     """
     Queries LinkedIn and Indeed specifically for Easy Apply / Direct Apply jobs.
+    Passes country_indeed='india' when targeting India so Indeed returns results.
     Filters out any roles requiring more than max_yoe.
     """
     collected_jobs: List[Dict[str, Any]] = []
 
     for term in search_terms:
         for loc in locations:
-            try:
-                print(f"Fetching '{term}' jobs in '{loc}' (Easy Apply only)...")
-                jobs_df = scrape_jobs(
-                    site_name=["linkedin", "indeed"],
-                    search_term=term,
-                    location=loc,
-                    results_wanted=results_per_query,
-                    hours_old=hours_old,
-                    easy_apply=True  # Strictly Easy Apply / Direct Apply
-                )
-                if not jobs_df.empty:
-                    records = jobs_df.to_dict(orient="records")
-                    for job in records:
-                        eligible, reason = is_experience_eligible(job, max_yoe_allowed=max_yoe)
-                        job["is_eligible"] = eligible
-                        job["eligibility_reason"] = reason
-                        if eligible:
-                            collected_jobs.append(job)
-            except Exception as e:
-                print(f"Error fetching jobs for {term} in {loc}: {e}")
+            country_indeed = "india" if "india" in loc.lower() else "usa"
+            print(f"Fetching '{term}' jobs in '{loc}' (Easy Apply only across LinkedIn & Indeed)...")
+
+            for site in ["indeed", "linkedin"]:
+                try:
+                    kwargs = {
+                        "site_name": [site],
+                        "search_term": term,
+                        "location": loc,
+                        "results_wanted": results_per_query,
+                        "hours_old": hours_old,
+                        "easy_apply": True
+                    }
+                    if site == "indeed":
+                        kwargs["country_indeed"] = country_indeed
+
+                    jobs_df = scrape_jobs(**kwargs)
+                    if not jobs_df.empty:
+                        records = jobs_df.to_dict(orient="records")
+                        site_eligible = 0
+                        for job in records:
+                            eligible, reason = is_experience_eligible(job, max_yoe_allowed=max_yoe)
+                            job["is_eligible"] = eligible
+                            job["eligibility_reason"] = reason
+                            if eligible:
+                                collected_jobs.append(job)
+                                site_eligible += 1
+                        print(f"  [{site.upper()}] Found {len(records)} jobs ({site_eligible} <= {max_yoe} YOE eligible)")
+                except Exception as e:
+                    print(f"  [Error fetching {site} jobs for '{term}']: {e}")
 
     # Deduplicate by job URL or title+company
     unique_jobs = {}
