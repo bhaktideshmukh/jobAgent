@@ -174,6 +174,8 @@ def apply_job_node(state: ApplicationState) -> Dict[str, Any]:
     error_msg = result.get("error", "")
     if "No Direct / Easy Apply button" in str(error_msg):
         status = "no_apply_button"
+    elif "daily Easy Apply limit reached" in str(error_msg) or status == "daily_limit_reached":
+        status = "daily_limit_reached"
 
     screenshot = result.get("screenshot_path")
     record_application(job, status=status, reason=error_msg, screenshot_path=screenshot)

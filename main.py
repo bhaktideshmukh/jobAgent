@@ -93,16 +93,39 @@ def main():
     print("🏁 LANGGRAPH EXECUTION COMPLETE")
     print("=" * 75)
     if final_state:
-        print(f"Total Discovered: {final_state.get('total_discovered', 0)}")
-        print(f"Applied Jobs:     {len(final_state.get('applied_jobs', []))}")
-        print(f"Skipped Jobs:     {len(final_state.get('skipped_jobs', []))}")
+        applied = final_state.get('applied_jobs', [])
+        submitted = [j for j in applied if j.get('status') == 'submitted']
+        daily_limit = [j for j in applied if j.get('status') == 'daily_limit_reached']
+        already_applied = [j for j in applied if j.get('status') == 'already_applied']
+        no_apply = [j for j in applied if j.get('status') == 'no_apply_button']
+        failed = [j for j in applied if j.get('status') not in ['submitted', 'already_applied', 'daily_limit_reached', 'no_apply_button']]
 
-        if final_state.get("applied_jobs"):
-            print("\nSuccessfully Applied To:")
-            for j in final_state.get("applied_jobs"):
-                print(f"  • {j.get('title')} @ {j.get('company')} [{j.get('status')}]")
+        print(f"Total Discovered: {final_state.get('total_discovered', 0)}")
+        print(f"Submitted:        {len(submitted)}")
+        print(f"Already Applied:  {len(already_applied)}")
+        print(f"No Apply Button:  {len(no_apply)}")
+        if daily_limit:
+            print(f"Daily Limit:      {len(daily_limit)} (Platform quota reached)")
+        if failed:
+            print(f"Failed / Errors:  {len(failed)}")
+        print(f"Skipped (YOE >3): {len(final_state.get('skipped_jobs', []))}")
+
+        if submitted:
+            print("\nSuccessfully Submitted Applications:")
+            for j in submitted:
+                print(f"  • {j.get('title')} @ {j.get('company')}")
                 if j.get("screenshot"):
-                    print(f"    Screenshot: {j.get('screenshot')}")
+                    print(f"    Proof Screenshot: {j.get('screenshot')}")
+
+        if daily_limit:
+            print("\n[!] Platform Daily Quota Reached:")
+            for j in daily_limit:
+                print(f"  • {j.get('title')} @ {j.get('company')} [Daily Easy Apply limit reached for today]")
+
+        if no_apply:
+            print("\nNot Submitted (No Direct/Easy Apply button or external redirect):")
+            for j in no_apply:
+                print(f"  • {j.get('title')} @ {j.get('company')}")
 
 if __name__ == "__main__":
     main()

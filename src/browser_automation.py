@@ -888,8 +888,11 @@ class JobApplicationBrowser:
             else:
                 apply_selectors = [
                     "button.jobs-apply-button",
-                    "button:has-text('Easy Apply')",
-                    "button[aria-label*='Easy Apply']"
+                    ":is(button, a, div[role='button']):has-text('Easy Apply')",
+                    ":is(button, a, div[role='button'])[aria-label*='Easy Apply']",
+                    "button[aria-label*='Easy Apply']",
+                    "a:has-text('Easy Apply')",
+                    ".jobs-apply-button--top-card"
                 ]
 
             apply_query = ", ".join(apply_selectors)
@@ -900,9 +903,21 @@ class JobApplicationBrowser:
             except Exception:
                 pass
 
-            apply_btn = page.locator(apply_query).first
+            # Find the first actually visible apply button
+            apply_btn = None
+            for sel in apply_selectors:
+                try:
+                    locs = page.locator(sel).all()
+                    for loc in locs:
+                        if loc.is_visible():
+                            apply_btn = loc
+                            break
+                    if apply_btn:
+                        break
+                except Exception:
+                    continue
             
-            if not apply_btn.is_visible():
+            if not apply_btn or not apply_btn.is_visible():
                 result["error"] = f"No Direct / Easy Apply button visible on {platform_name} (may require login or external redirect)"
                 page.screenshot(path=str(SCREENSHOTS_DIR / f"{platform_name.lower()}_no_apply_found.png"))
                 page.close()
@@ -921,7 +936,17 @@ class JobApplicationBrowser:
                 apply_page.wait_for_load_state("domcontentloaded")
                 time.sleep(2)
             except Exception:
-                time.sleep(3)
+                time.sleep(2)
+
+            # Check if LinkedIn daily limit modal appeared
+            limit_modal = apply_page.locator("div.artdeco-modal:has-text('Easy Apply limit'), div[role='dialog']:has-text('Easy Apply limit'), h2:has-text('Easy Apply limit'), p:has-text('limit Easy Apply')").first
+            if limit_modal.count() > 0 and limit_modal.is_visible():
+                print("\n[!] LinkedIn Daily Easy Apply Limit Reached: 'You reached today\\'s Easy Apply limit'")
+                result["status"] = "daily_limit_reached"
+                result["error"] = "LinkedIn daily Easy Apply limit reached. Resume applications tomorrow."
+                apply_page.screenshot(path=str(SCREENSHOTS_DIR / "linkedin_daily_limit_reached.png"))
+                apply_page.close()
+                return result
 
             container = self._get_active_container(apply_page)
             print(f"{platform_name} application container detected!")
