@@ -10,12 +10,33 @@ from src.graph import build_job_agent_graph
 from src.tracker import get_application_history
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="LangGraph Autonomous Job Application Agent")
+    parser = argparse.ArgumentParser(
+        description="LangGraph Autonomous Job Application Agent",
+        epilog="Examples:\n"
+               "  python main.py indeed --limit 5\n"
+               "  python main.py linkedin --review\n"
+               "  python main.py all --limit 10\n"
+               "  python main.py --platform indeed --review",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    # Positional or flag platform parameter
+    parser.add_argument(
+        "platform_pos",
+        nargs="?",
+        choices=["indeed", "linkedin", "all", None],
+        help="Target platform: 'indeed', 'linkedin', or 'all' (default: all)"
+    )
+    parser.add_argument(
+        "--platform", "-p",
+        choices=["indeed", "linkedin", "all"],
+        default=None,
+        help="Target platform flag: 'indeed', 'linkedin', or 'all'"
+    )
     parser.add_argument("--auto", action="store_true", default=True, help="Automatically submit without review prompt")
     parser.add_argument("--review", dest="auto", action="store_false", help="Prompt for approval before submitting each job")
     parser.add_argument("--titles", nargs="+", help="Specific job titles to search (defaults to all job_titles in profile.yaml)")
     parser.add_argument("--locations", nargs="+", help="Specific locations to search (defaults to all locations in profile.yaml)")
-    parser.add_argument("--limit", type=int, default=15, help="Maximum number of jobs to process in this run")
+    parser.add_argument("--limit", type=int, default=15, help="Maximum number of jobs to process in this run (default: 15)")
     parser.add_argument("--history", action="store_true", help="Print past application history and exit")
     return parser.parse_args()
 
@@ -49,16 +70,22 @@ def main():
     profile = load_profile()
     target_search = profile.get("target_search", {})
     
+    # Platform selection: positional takes precedence, then flag, default 'all'
+    target_platform = (args.platform or args.platform_pos or "all").lower()
+
     # Use all titles from profile.yaml unless overridden by CLI
     search_titles = args.titles if args.titles else target_search.get("job_titles", ["Software Engineer"])
     search_locations = args.locations if args.locations else target_search.get("locations", ["India"])
     max_yoe = target_search.get("max_years_experience", 3)
+    limit = args.limit
 
     # Initial state
     initial_state = {
         "search_terms": search_titles,
         "locations": search_locations,
         "max_yoe": max_yoe,
+        "platform": target_platform,
+        "limit": limit,
         "auto_submit": args.auto,
         "job_queue": [],
         "current_job": None,
@@ -73,8 +100,11 @@ def main():
         "review_approved": True
     }
 
+    platform_display = "LinkedIn & Indeed (Both)" if target_platform == "all" else target_platform.capitalize()
+    print(f"Target Platform:  {platform_display}")
     print(f"Search Criteria:  {initial_state['search_terms']} in {initial_state['locations']}")
     print(f"Experience Gate:  <= {max_yoe} YOE")
+    print(f"Execution Limit:  Up to {limit} applications")
     print(f"Execution Mode:   {'Autonomous Auto-Submit' if args.auto else 'Human-in-the-Loop Review'}")
     print("=" * 75)
 

@@ -76,23 +76,27 @@ def is_experience_eligible(job: Dict[str, Any], max_yoe_allowed: int = 3) -> Tup
 def fetch_easy_apply_jobs(
     search_terms: List[str],
     locations: List[str],
+    platforms: List[str] = None,
     results_per_query: int = 15,
     hours_old: int = 48,
     max_yoe: int = 3
 ) -> List[Dict[str, Any]]:
     """
-    Queries LinkedIn and Indeed specifically for Easy Apply / Direct Apply jobs.
+    Queries LinkedIn and/or Indeed specifically for Easy Apply / Direct Apply jobs.
     Passes country_indeed='india' when targeting India so Indeed returns results.
     Filters out any roles requiring more than max_yoe.
     """
+    target_platforms = [p.lower() for p in platforms] if platforms else ["indeed", "linkedin"]
     collected_jobs: List[Dict[str, Any]] = []
+
+    platforms_str = " & ".join(p.capitalize() for p in target_platforms)
 
     for term in search_terms:
         for loc in locations:
             country_indeed = "india" if "india" in loc.lower() else "usa"
-            print(f"Fetching '{term}' jobs in '{loc}' (Easy Apply only across LinkedIn & Indeed)...")
+            print(f"Fetching '{term}' jobs in '{loc}' (Easy Apply across {platforms_str})...")
 
-            for site in ["indeed", "linkedin"]:
+            for site in target_platforms:
                 try:
                     kwargs = {
                         "site_name": [site],
@@ -126,5 +130,21 @@ def fetch_easy_apply_jobs(
         key = job.get("job_url") or f"{job.get('title')}-{job.get('company')}"
         if key not in unique_jobs:
             unique_jobs[key] = job
+
+    # If multiple platforms are queried, interleave them so neither dominates the queue
+    if len(target_platforms) > 1:
+        indeed_jobs = [j for j in unique_jobs.values() if "indeed.com" in (j.get("job_url") or "").lower()]
+        linkedin_jobs = [j for j in unique_jobs.values() if "linkedin.com" in (j.get("job_url") or "").lower()]
+        other_jobs = [j for j in unique_jobs.values() if j not in indeed_jobs and j not in linkedin_jobs]
+
+        interleaved = []
+        max_len = max(len(indeed_jobs), len(linkedin_jobs))
+        for i in range(max_len):
+            if i < len(indeed_jobs):
+                interleaved.append(indeed_jobs[i])
+            if i < len(linkedin_jobs):
+                interleaved.append(linkedin_jobs[i])
+        interleaved.extend(other_jobs)
+        return interleaved
 
     return list(unique_jobs.values())

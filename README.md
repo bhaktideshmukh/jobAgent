@@ -135,11 +135,28 @@ To prevent bot-detection, Cloudflare challenges, or Google OAuth blocks, authent
 
 ## Usage Guide
 
+### Target Specific Platform (Indeed vs. LinkedIn)
+You can target a specific platform or run both together:
+
+```powershell
+# Target Indeed Direct Apply jobs only
+python main.py indeed --limit 5
+
+# Target LinkedIn Easy Apply jobs only
+python main.py linkedin --limit 5
+
+# Target both platforms (interleaved queue so neither dominates)
+python main.py all --limit 10
+
+# Or using the --platform flag with review mode:
+python main.py --platform indeed --review --limit 3
+```
+
 ### Run Autonomously (Auto-Submit)
 Searches for target positions in `profile.yaml`, filters for $\le 3$ YOE, autofills forms, and submits:
 
 ```powershell
-python main.py --auto
+python main.py indeed --auto
 ```
 
 ### Run with Human-in-the-Loop Review

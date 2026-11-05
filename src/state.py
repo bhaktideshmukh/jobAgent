@@ -9,6 +9,8 @@ class ApplicationState(TypedDict):
     search_terms: List[str]
     locations: List[str]
     max_yoe: int
+    platform: str
+    limit: int
 
     # Job queues
     job_queue: List[Dict[str, Any]]

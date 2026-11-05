@@ -30,17 +30,24 @@ def discover_jobs_node(state: ApplicationState) -> Dict[str, Any]:
     search_terms = state.get("search_terms") or profile_titles
     locations = state.get("locations") or profile_locations
     max_yoe = state.get("max_yoe") or profile_yoe
+    platform_pref = (state.get("platform") or "all").lower()
+    limit = state.get("limit") or 15
+
+    target_platforms = [platform_pref] if platform_pref in ["indeed", "linkedin"] else ["indeed", "linkedin"]
 
     print("\n" + "=" * 70)
     print(f"[LangGraph Node: DISCOVER JOBS]")
+    print(f"Target Platforms: {', '.join(p.capitalize() for p in target_platforms)}")
     print(f"Target Titles:    {search_terms}")
     print(f"Target Locations: {locations}")
     print(f"Max YOE Barrier:  <= {max_yoe} years")
+    print(f"Queue Limit:      {limit} jobs")
     print("=" * 70)
 
     raw_jobs = fetch_easy_apply_jobs(
         search_terms=search_terms,
         locations=locations,
+        platforms=target_platforms,
         results_per_query=8,
         hours_old=72,
         max_yoe=max_yoe
@@ -51,6 +58,8 @@ def discover_jobs_node(state: ApplicationState) -> Dict[str, Any]:
     for job in raw_jobs:
         if not is_already_applied(job):
             unapplied_queue.append(job)
+            if len(unapplied_queue) >= limit:
+                break
         else:
             print(f"Skipping already applied job: {job.get('title')} @ {job.get('company')}")
 
