@@ -161,23 +161,6 @@ python main.py --history
 
 ---
 
-## Candidate Logic & Screen Filling Rules
-
-The agent enforces strict deterministic rules tailored for software engineering applications:
-
-| Category | Form Prompt / Field | Agent Behavior / Answer |
-|---|---|---|
-| **Company** | Current company, employer, organization | Always fills **`Avalara Technologies`** |
-| **Experience** | How many years in technology X, total exp | Always returns **`2`** |
-| **Notice Period** | Notice period, days left, serving notice | Always returns **`0`** (Immediate joiner) |
-| **Salary / CTC** | Current CTC / Expected salary | Clean numeric digits only (e.g. `1500000`, `1800000` / `15`, `18` if in LPA) |
-| **Ratings** | Rate yourself on a scale (1–5 or 1–10) | Automatically returns the highest integer (**`5`** or **`10`**) |
-| **Prior Employment** | Have you previously worked at this company? | Always returns **`No`** |
-| **Consent & Terms** | Consent, privacy policy, terms, certify | Always returns **`Yes`** and ticks required consent checkboxes |
-| **LinkedIn Follow** | Follow company checkbox on review step | **Unchecks** the box to prevent following company updates |
-
----
-
 ## Verification & Testing
 
 Dedicated test suites are included in `tests/`:
