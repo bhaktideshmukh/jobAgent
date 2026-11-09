@@ -62,33 +62,63 @@ class JobApplicationBrowser:
         if self.playwright:
             self.playwright.stop()
 
+    def _dismiss_popups_or_banners(self, page: Page):
+        """Dismisses cookie banners or prompt overlays that could obstruct form buttons."""
+        dismiss_selectors = [
+            "#onetrust-accept-btn-handler",
+            "button:has-text('Accept all cookies')",
+            "button:has-text('Reject all')",
+            "button:has-text('Accept')",
+            "button[aria-label='Close']",
+            "button.ia-DismissModal-close"
+        ]
+        for sel in dismiss_selectors:
+            try:
+                btn = page.locator(sel).first
+                if btn.count() > 0 and btn.is_visible():
+                    btn.click()
+                    time.sleep(0.3)
+            except Exception:
+                pass
+
     def _get_active_container(self, page: Page):
         """
         Finds the active application container.
         Supports LinkedIn modals, Indeed modals, and Indeed iframes.
         """
+        # Dismiss any obstructive cookie banners or popups
+        self._dismiss_popups_or_banners(page)
+
         # 1. Check for Indeed iframe
-        iframes = page.locator("iframe#ia-iframe, iframe[title*='apply'], iframe[id*='apply']").all()
-        for ifr in iframes:
+        for sel in ["iframe#ia-iframe", "iframe[title*='apply' i]", "iframe[id*='apply' i]", "iframe[src*='indeed' i]", "iframe[src*='apply' i]"]:
             try:
-                if ifr.is_visible():
-                    return page.frame_locator(f"iframe#{ifr.get_attribute('id') or 'ia-iframe'}")
+                ifr = page.locator(sel).first
+                if ifr.count() > 0 and ifr.is_visible():
+                    return page.frame_locator(sel)
             except Exception:
                 pass
 
         # 2. Check for dialogs (LinkedIn artdeco-modal or Indeed modal)
-        candidates = page.locator("div.artdeco-modal, div.jobs-easy-apply-modal, div[role='dialog'], div[data-testid*='modal']").all()
-        for c in candidates:
+        dialog_selectors = [
+            "div.artdeco-modal",
+            "div.jobs-easy-apply-modal",
+            "div[role='dialog']",
+            "div[data-testid*='modal']",
+            "div.ia-BasePage",
+            "#ia-container",
+            "div.ia-ApplicationForm"
+        ]
+        for sel in dialog_selectors:
             try:
-                if c.is_visible():
-                    if c.locator("button[aria-label*='Dismiss'], button:has-text('Next'), button:has-text('Continue'), button:has-text('Review'), button:has-text('Submit')").count() > 0:
-                        return c
+                candidates = page.locator(sel).all()
+                for c in candidates:
+                    if c.is_visible():
+                        has_buttons = c.locator("button, input[type='submit'], [role='button']").count() > 0
+                        has_inputs = c.locator("input, select, textarea").count() > 0
+                        if has_buttons or has_inputs:
+                            return c
             except Exception:
                 continue
-
-        for c in candidates:
-            if c.is_visible():
-                return c
 
         return page
 
@@ -181,14 +211,16 @@ class JobApplicationBrowser:
             if "*" in label_text or "required" in label_text:
                 return True
 
-            # Screening topics in application forms are required by default unless marked optional
+            # Essential contact fields and screening topics are mandatory unless explicitly marked optional
             mandatory_screening_topics = [
+                "first name", "last name", "full name", "phone", "mobile", "email",
+                "city", "postal", "zip", "location", "address", "country",
                 "experience", "years", "ctc", "salary", "notice", "join", "commute",
                 "hybrid", "onsite", "wfo", "eligible", "authorized", "visa", "sponsorship",
                 "rate yourself", "proficiency", "worked with", "worked on", "requirement",
                 "qualification", "jd", "job description"
             ]
-            if any(t in label_text for t in mandatory_screening_topics):
+            if any(t in label_text or t in desc for t in mandatory_screening_topics):
                 return True
 
         except Exception:
@@ -249,6 +281,7 @@ class JobApplicationBrowser:
                 try:
                     inp.dispatch_event("input")
                     inp.dispatch_event("change")
+                    inp.dispatch_event("blur")
                 except Exception:
                     pass
 
@@ -569,6 +602,81 @@ class JobApplicationBrowser:
             except Exception as e:
                 print(f"    [Radio Error] {e}")
 
+        # Also handle radio groups outside fieldset (e.g. Indeed div[role='radiogroup'] or named radio groups)
+        try:
+            all_radios = container.locator("input[type='radio']").all()
+            grouped: Dict[str, List] = {}
+            for r in all_radios:
+                try:
+                    if not r.is_visible():
+                        continue
+                    name = r.get_attribute("name") or "default_group"
+                    grouped.setdefault(name, []).append(r)
+                except Exception:
+                    continue
+
+            for name, r_list in grouped.items():
+                if name in filled_ids:
+                    continue
+                # If any radio in group is already checked, skip
+                if any(r.is_checked() for r in r_list):
+                    filled_ids.add(name)
+                    continue
+
+                # Determine question from parent / ancestor or aria
+                first_r = r_list[0]
+                q_text = ""
+                try:
+                    parent_group = first_r.locator("xpath=ancestor::div[contains(@role, 'radiogroup') or contains(@class, 'ia-Questions-item') or contains(@class, 'form-group')][1]")
+                    if parent_group.count() > 0:
+                        aria_q = parent_group.get_attribute("aria-label") or parent_group.get_attribute("aria-labelledby") or ""
+                        if aria_q and not aria_q.startswith("label-"):
+                            q_text = aria_q
+                        else:
+                            lines = [ln.strip() for ln in parent_group.inner_text().split("\n") if ln.strip()]
+                            if lines:
+                                q_text = lines[0]
+                except Exception:
+                    pass
+
+                if not q_text:
+                    q_text = self._get_input_label(container, first_r) or name
+
+                if not q_text or q_text in filled_ids:
+                    continue
+
+                ans = self.rag.answer_screening_question(q_text).lower()
+                matched = False
+                for r in r_list:
+                    r_lbl = self._get_input_label(container, r).lower()
+                    val = (r.get_attribute("value") or "").lower()
+                    combo_desc = f"{r_lbl} {val}"
+                    if ans in combo_desc or (ans == "yes" and "yes" in combo_desc) or (ans == "no" and "no" in combo_desc):
+                        print(f"    [Radio Group] '{q_text}' -> Checking: '{r_lbl or val}'")
+                        r.check(force=True)
+                        matched = True
+                        break
+                    if ans == "0" and any(k in combo_desc for k in ["0", "immediate", "less than", "15 days"]):
+                        print(f"    [Radio Group Joining] '{q_text}' -> Checking: '{r_lbl or val}'")
+                        r.check(force=True)
+                        matched = True
+                        break
+                    if ans == "2" and any(k in combo_desc for k in ["2", "1-3", "2-3", "2+"]):
+                        print(f"    [Radio Group YOE] '{q_text}' -> Checking: '{r_lbl or val}'")
+                        r.check(force=True)
+                        matched = True
+                        break
+
+                if not matched and r_list:
+                    print(f"    [Radio Group Fallback] '{q_text}' -> Checking first option")
+                    r_list[0].check(force=True)
+
+                filled_ids.add(name)
+                filled_ids.add(q_text)
+                time.sleep(0.15)
+        except Exception as e:
+            print(f"    [Radio Grouping Error] {e}")
+
     def _handle_file_uploads(self, container):
         """
         Uploads candidate resume if file input is present.
@@ -615,10 +723,17 @@ class JobApplicationBrowser:
                     const parentText = inp.parentElement ? inp.parentElement.innerText.toLowerCase() : "";
                     const fullDesc = (id + " " + name + " " + labelText + " " + parentText).toLowerCase();
 
-                    // Never tick the "Follow company" or negative exclusion checkboxes
-                    const isExcluded = fullDesc.includes("follow") || id.includes("follow") || name.includes("follow") ||
+                    // Never tick the "Follow company", email updates, or negative exclusion checkboxes
+                    const emailKeywords = [
+                        "email update", "email updates", "get email updates", "job alert", "job alerts",
+                        "email me", "send me", "notify me", "similar jobs", "recommended jobs",
+                        "stay updated", "receive updates", "job notifications", "alert me", "alerts"
+                    ];
+                    const isEmailUpdate = emailKeywords.some(kw => fullDesc.includes(kw));
+                    const isExcluded = isEmailUpdate || fullDesc.includes("follow") || id.includes("follow") || name.includes("follow") ||
                                        fullDesc.includes("stay up to date") ||
                                        fullDesc.includes("previously worked") || fullDesc.includes("former employee") ||
+                                       fullDesc.includes("referred by") || fullDesc.includes("employee referral") ||
                                        fullDesc.includes("sponsorship") || fullDesc.includes("serving notice") ||
                                        fullDesc.includes("serving np") || fullDesc.includes("decline") ||
                                        fullDesc.includes("opt out");
@@ -704,7 +819,14 @@ class JobApplicationBrowser:
                             if not lbl.is_visible():
                                 continue
                             txt = lbl.inner_text().lower().strip()
-                            if "follow" in txt or "previously worked" in txt or "sponsorship" in txt:
+                            excluded_terms = [
+                                "follow", "previously worked", "former employee", "sponsorship",
+                                "referred by", "employee referral", "serving notice", "decline", "opt out",
+                                "email update", "email updates", "get email updates", "job alert", "job alerts",
+                                "email me", "send me", "notify me", "similar jobs", "recommended jobs",
+                                "stay up to date", "stay updated", "receive updates", "notifications", "alerts"
+                            ]
+                            if any(ex in txt for ex in excluded_terms):
                                 continue
                             
                             for_id = lbl.get_attribute("for")
@@ -733,7 +855,7 @@ class JobApplicationBrowser:
                         try:
                             cb_id = cb.get_attribute("id") or ""
                             desc = (cb_id + " " + (cb.get_attribute("name") or "") + " " + (cb.get_attribute("aria-label") or "")).lower()
-                            if "follow" in desc or cb_id == "follow-company-checkbox" or any(ex in desc for ex in ["previously worked", "former employee", "sponsorship", "serving notice", "decline", "opt out"]):
+                            if "follow" in desc or cb_id == "follow-company-checkbox" or any(ex in desc for ex in excluded_terms):
                                 continue
                             if not cb.is_checked():
                                 print(f"    [Checkbox] Force checking input: #{cb_id}")
@@ -744,8 +866,9 @@ class JobApplicationBrowser:
                 except Exception:
                     pass
 
-            # Final check: always ensure follow company checkbox remains unchecked
+            # Final check: always ensure follow company and email updates checkboxes remain unchecked
             self._uncheck_follow_company(container, page)
+            self._uncheck_email_updates(container, page)
 
         except Exception as e:
             print(f"    [Consent Checkboxes Error] {e}")
@@ -829,6 +952,129 @@ class JobApplicationBrowser:
         except Exception as e:
             print(f"    [Uncheck Follow Error] {e}")
         return False
+
+    def _uncheck_email_updates(self, container, page: Page) -> bool:
+        """
+        Ensures that 'Get email updates...', 'Job alerts', and similar promotional/alert
+        checkboxes are NEVER checked on Indeed, LinkedIn, or any company application.
+        If pre-checked by the platform, unchecks them cleanly.
+        """
+        unchecked_any = False
+        try:
+            # 1. Primary Strategy: In-page DOM evaluation to locate & uncheck checked email/alert checkboxes
+            res = page.evaluate("""() => {
+                const keywords = [
+                    "email update", "email updates", "get email updates", "job alert", "job alerts",
+                    "email me", "send me jobs", "send me alerts", "notify me", "similar jobs",
+                    "recommended jobs", "stay updated", "receive updates", "job notifications",
+                    "alert me", "new jobs like this", "get notified"
+                ];
+                let count = 0;
+                const checkboxes = Array.from(document.querySelectorAll("input[type='checkbox']"));
+                for (const cb of checkboxes) {
+                    const id = (cb.id || "").toLowerCase();
+                    const name = (cb.name || "").toLowerCase();
+                    const aria = (cb.getAttribute("aria-label") || "").toLowerCase();
+                    const label = document.querySelector(`label[for='${cb.id}']`) || cb.closest("label");
+                    const labelText = label ? label.innerText.toLowerCase() : "";
+                    const parentText = cb.parentElement ? cb.parentElement.innerText.toLowerCase() : "";
+                    const fullDesc = (id + " " + name + " " + aria + " " + labelText + " " + parentText).toLowerCase();
+
+                    const isMatch = keywords.some(k => fullDesc.includes(k));
+                    if (isMatch) {
+                        const isChecked = cb.checked || cb.getAttribute('checked') !== null || cb.getAttribute('aria-checked') === 'true';
+                        if (isChecked) {
+                            if (label) {
+                                label.click();
+                            } else {
+                                cb.click();
+                            }
+                            cb.checked = false;
+                            cb.removeAttribute('checked');
+                            cb.setAttribute('aria-checked', 'false');
+                            cb.dispatchEvent(new Event('change', { bubbles: true }));
+                            cb.dispatchEvent(new Event('input', { bubbles: true }));
+                            count++;
+                        }
+                    }
+                }
+                return count;
+            }""")
+            if res and int(res) > 0:
+                print(f"    [Email Updates] Successfully unchecked {res} 'Get email updates / job alerts' checkbox(es) via DOM!")
+                unchecked_any = True
+                time.sleep(0.2)
+
+            # 2. Secondary Strategy: Playwright locators for email updates / job alert checkboxes & labels
+            email_selectors = [
+                "input[id*='email-update' i]",
+                "input[id*='email_update' i]",
+                "input[id*='job-alert' i]",
+                "input[id*='job_alert' i]",
+                "input[id*='alert' i]",
+                "input[name*='emailUpdate' i]",
+                "input[name*='jobAlert' i]",
+                "input[aria-label*='email update' i]",
+                "input[aria-label*='job alert' i]",
+                "input[aria-label*='email' i][aria-label*='update' i]"
+            ]
+            search_scopes = [container]
+            if container != page:
+                search_scopes.append(page)
+
+            for scope in search_scopes:
+                for sel in email_selectors:
+                    try:
+                        cbs = scope.locator(sel).all()
+                        for cb in cbs:
+                            if cb.is_checked():
+                                print(f"    [Email Updates] Unchecking checkbox via Playwright: {sel}")
+                                cb.uncheck(force=True)
+                                unchecked_any = True
+                                time.sleep(0.15)
+                    except Exception:
+                        continue
+
+            # Check visible labels mentioning email updates / job alerts
+            label_patterns = [
+                "label:has-text('email updates')",
+                "label:has-text('Email updates')",
+                "label:has-text('Get email updates')",
+                "label:has-text('job alerts')",
+                "label:has-text('Job alerts')",
+                "label:has-text('send me jobs')",
+                "label:has-text('Send me jobs')",
+                "label:has-text('Send me job alerts')",
+                "span:has-text('Get email updates')",
+                "span:has-text('email updates for jobs like this')"
+            ]
+            for scope in search_scopes:
+                for lsel in label_patterns:
+                    try:
+                        lbls = scope.locator(lsel).all()
+                        for lbl in lbls:
+                            if not lbl.is_visible():
+                                continue
+                            # Find associated input
+                            for_id = lbl.get_attribute("for")
+                            cb = None
+                            if for_id:
+                                cb = scope.locator(f"#{for_id}").first
+                            else:
+                                cb = lbl.locator("input[type='checkbox']").first
+                            
+                            if cb and cb.count() > 0 and cb.is_checked():
+                                print(f"    [Email Updates] Unchecking via label click: '{lbl.inner_text().strip()[:40]}'")
+                                lbl.click(force=True)
+                                unchecked_any = True
+                                time.sleep(0.15)
+                    except Exception:
+                        continue
+
+        except Exception as e:
+            print(f"    [Uncheck Email Updates Error] {e}")
+
+        return unchecked_any
 
     def process_application(self, job_url: str, auto_submit: bool = True) -> Dict[str, Any]:
         """
@@ -959,6 +1205,9 @@ class JobApplicationBrowser:
             for step in range(1, max_steps + 1):
                 print(f"\n--- [{platform_name} Step {step}] ---")
                 
+                # Dynamically re-detect container on each step to avoid stale DOM references
+                container = self._get_active_container(apply_page)
+
                 # Smooth filling without focus jumps or screen flicker
                 self._fill_text_inputs(container, filled_ids)
                 self._fill_select_dropdowns(container, filled_ids)
@@ -967,58 +1216,111 @@ class JobApplicationBrowser:
                 self._fill_consent_checkboxes(container, apply_page, filled_ids)
                 self._handle_file_uploads(container)
                 self._uncheck_follow_company(container, apply_page)
+                self._uncheck_email_updates(container, apply_page)
                 time.sleep(0.8)
 
                 # Capture step screenshot
                 step_img = SCREENSHOTS_DIR / f"{platform_name.lower()}_step_{step}.png"
                 apply_page.screenshot(path=str(step_img))
 
-                # Button selectors for both platforms
+                # Comprehensive button selectors for both platforms (Indeed & LinkedIn)
                 submit_selectors = [
                     "button:has-text('Submit your application')",
                     "button:has-text('Submit application')",
-                    "button[aria-label*='Submit application']"
+                    "button:has-text('Submit')",
+                    "button[data-testid*='submit']",
+                    "button[aria-label*='Submit application']",
+                    "button[aria-label*='Submit']",
+                    "input[type='submit'][value*='Submit']",
+                    ":is(button, a, div[role='button'], input[type='submit']):has-text('Submit')"
                 ]
                 review_selectors = [
                     "button:has-text('Review your application')",
+                    "button:has-text('Review application')",
                     "button:has-text('Review')",
-                    "button[aria-label*='Review your application']"
+                    "button[data-testid*='review']",
+                    "button[aria-label*='Review your application']",
+                    "button[aria-label*='Review']",
+                    ":is(button, a, div[role='button'], input[type='submit']):has-text('Review')"
                 ]
                 next_selectors = [
                     "button:has-text('Continue')",
                     "button:has-text('Next')",
+                    "button:has-text('Save and continue')",
+                    "button:has-text('Continue to next step')",
+                    "button:has-text('Continue to application')",
+                    "button[data-testid*='continue']",
+                    "button[data-testid*='save-and-continue']",
+                    "button[data-testid*='next']",
+                    "button.ia-continueButton",
+                    "button.ia-Navigation-button",
+                    "button[id*='continue']",
+                    "button[id*='next']",
+                    "input[type='submit'][value*='Continue']",
+                    "input[type='submit'][value*='Next']",
+                    "button[type='submit']:has-text('Continue')",
+                    "button[type='submit']:has-text('Next')",
                     "button[aria-label*='Continue to next step']",
-                    "button[aria-label*='Continue']"
+                    "button[aria-label*='Continue']",
+                    "button[aria-label*='Next']",
+                    "button:has-text('Proceed')",
+                    ":is(button, a, div[role='button'], input[type='submit']):has-text('Continue')",
+                    ":is(button, a, div[role='button'], input[type='submit']):has-text('Next')"
                 ]
 
                 submit_btn = None
                 review_btn = None
                 next_btn = None
 
+                search_scopes = [container]
+                if container != apply_page:
+                    search_scopes.append(apply_page)
+                for f in apply_page.frames:
+                    if f not in search_scopes:
+                        search_scopes.append(f)
+
                 for wait_attempt in range(8):
                     # 1. Check for Submit
-                    for sel in submit_selectors:
-                        loc = apply_page.locator(sel).first
-                        if loc.count() > 0 and loc.is_visible():
-                            submit_btn = loc
+                    for scope in search_scopes:
+                        for sel in submit_selectors:
+                            try:
+                                loc = scope.locator(sel).first
+                                if loc.count() > 0 and loc.is_visible():
+                                    submit_btn = loc
+                                    break
+                            except Exception:
+                                pass
+                        if submit_btn:
                             break
                     if submit_btn:
                         break
 
                     # 2. Check for Review
-                    for sel in review_selectors:
-                        loc = apply_page.locator(sel).first
-                        if loc.count() > 0 and loc.is_visible():
-                            review_btn = loc
+                    for scope in search_scopes:
+                        for sel in review_selectors:
+                            try:
+                                loc = scope.locator(sel).first
+                                if loc.count() > 0 and loc.is_visible():
+                                    review_btn = loc
+                                    break
+                            except Exception:
+                                pass
+                        if review_btn:
                             break
                     if review_btn:
                         break
 
                     # 3. Check for Next / Continue
-                    for sel in next_selectors:
-                        loc = apply_page.locator(sel).first
-                        if loc.count() > 0 and loc.is_visible():
-                            next_btn = loc
+                    for scope in search_scopes:
+                        for sel in next_selectors:
+                            try:
+                                loc = scope.locator(sel).first
+                                if loc.count() > 0 and loc.is_visible():
+                                    next_btn = loc
+                                    break
+                            except Exception:
+                                pass
+                        if next_btn:
                             break
                     if next_btn:
                         break
@@ -1029,8 +1331,9 @@ class JobApplicationBrowser:
                     print(f"Reached final step! 'Submit' button is visible on {platform_name}.")
                     # Ensure any final consent / agreement checkbox is ticked
                     self._fill_consent_checkboxes(container, apply_page, filled_ids)
-                    # Always uncheck the 'Follow company' checkbox before submitting
+                    # Always uncheck 'Follow company' and 'Email updates' checkboxes before submitting
                     self._uncheck_follow_company(container, apply_page)
+                    self._uncheck_email_updates(container, apply_page)
                     time.sleep(0.3)
                     
                     review_file = SCREENSHOTS_DIR / f"{platform_name.lower()}_before_submit_{int(time.time())}.png"
@@ -1038,8 +1341,14 @@ class JobApplicationBrowser:
                     
                     if auto_submit:
                         self._uncheck_follow_company(container, apply_page)
+                        self._uncheck_email_updates(container, apply_page)
                         print(f"Clicking 'Submit' on {platform_name}...")
-                        submit_btn.click()
+                        try:
+                            submit_btn.scroll_into_view_if_needed()
+                            time.sleep(0.2)
+                            submit_btn.click()
+                        except Exception:
+                            submit_btn.click(force=True)
                         time.sleep(3)
                         confirm_file = SCREENSHOTS_DIR / f"{platform_name.lower()}_submitted_{int(time.time())}.png"
                         apply_page.screenshot(path=str(confirm_file))
@@ -1052,14 +1361,34 @@ class JobApplicationBrowser:
                     break
 
                 if review_btn:
-                    print(f"Found '{review_btn.inner_text().strip()}' button! Advancing to review page...")
-                    review_btn.click()
+                    btn_text = "Review"
+                    try:
+                        btn_text = review_btn.inner_text().strip() or "Review"
+                    except Exception:
+                        pass
+                    print(f"Found '{btn_text}' button! Advancing to review page...")
+                    try:
+                        review_btn.scroll_into_view_if_needed()
+                        time.sleep(0.2)
+                        review_btn.click()
+                    except Exception:
+                        review_btn.click(force=True)
                     time.sleep(2.5)
                     continue
 
                 if next_btn:
-                    print(f"Found '{next_btn.inner_text().strip()}' button! Advancing...")
-                    next_btn.click()
+                    btn_text = "Continue"
+                    try:
+                        btn_text = next_btn.inner_text().strip() or "Continue"
+                    except Exception:
+                        pass
+                    print(f"Found '{btn_text}' button! Advancing...")
+                    try:
+                        next_btn.scroll_into_view_if_needed()
+                        time.sleep(0.2)
+                        next_btn.click()
+                    except Exception:
+                        next_btn.click(force=True)
                     time.sleep(2)
                     continue
 

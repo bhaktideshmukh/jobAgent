@@ -88,7 +88,7 @@ def is_already_applied(job_info: Union[str, Dict[str, Any]]) -> bool:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # 1. Match by job_key if extracted
+    # 1. Match by job_key if extracted (e.g. indeed_123456 or linkedin_123456)
     if job_key:
         cursor.execute(
             f"SELECT id FROM application_history WHERE job_key = ? AND status IN ({placeholders})",
@@ -98,15 +98,25 @@ def is_already_applied(job_info: Union[str, Dict[str, Any]]) -> bool:
             conn.close()
             return True
             
-    # 2. Match by exact job_url or clean_url
-    if clean_url:
+    # 2. Match by exact job_url
+    if job_url:
         cursor.execute(
-            f"SELECT id FROM application_history WHERE (job_url = ? OR job_url LIKE ?) AND status IN ({placeholders})",
-            (job_url, f"{clean_url}%", *filter_statuses)
+            f"SELECT id FROM application_history WHERE job_url = ? AND status IN ({placeholders})",
+            (job_url, *filter_statuses)
         )
         if cursor.fetchone():
             conn.close()
             return True
+
+        # Only match prefix if clean_url retains unique job identifier (never for generic base paths like /viewjob)
+        if clean_url and not clean_url.rstrip('/').endswith("/viewjob"):
+            cursor.execute(
+                f"SELECT id FROM application_history WHERE job_url LIKE ? AND status IN ({placeholders})",
+                (f"{clean_url}%", *filter_statuses)
+            )
+            if cursor.fetchone():
+                conn.close()
+                return True
             
     # 3. Match by normalized (title, company) if both present
     if title and company:

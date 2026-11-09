@@ -13,7 +13,7 @@ An autonomous, agentic job search and application engine built with **LangGraph*
   - **Experience & Notice Period**: Strict candidate rules (technology experience $\rightarrow$ `2` YOE, joining days $\rightarrow$ `0` days, serving notice period $\rightarrow$ `No`).
   - **Clean CTC Formatting**: Pure numeric values without currency text (e.g. `1500000` / `1800000`, or `15` / `18` if LPA is requested).
   - **Rate Yourself Questions**: Automatically selects the highest rating integer (`5` on 1–5 scale, `10` on 1–10 scale, or "Expert").
-  - **Previous Employer Check**: Always selects `No` for questions asking if you previously worked at the hiring organization.
+  - **Previous Employer & Referral Checks**: Always selects `No` for questions asking if you previously worked at the hiring organization or if you were referred by an employee.
   - **Work Mode & Commute**: Always answers `Yes` to commuting to job location, hybrid, WFO, and onsite arrangements.
   - **Job Requirements & Eligibility**: Always answers `Yes` to meeting JD requirements, reading the JD, and location/role eligibility.
   - **Specific Technologies & Skills**: Answers `Yes` to working with specific technologies (in string fields, dropdowns, radios, or ticks checkboxes); returns `2` when numeric years are asked.

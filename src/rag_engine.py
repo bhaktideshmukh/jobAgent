@@ -220,6 +220,16 @@ class ProfileRAG:
         if any(ind in q_lower for ind in prev_worked_indicators):
             return "No"
 
+        # Rule: Referred by company's employee -> ALWAYS "No"
+        referral_indicators = [
+            "referred by", "employee referral", "referred by an employee", "referred by a current employee",
+            "referred by company", "referred by someone", "were you referred", "are you referred",
+            "internal referral", "referral by employee", "referral by a company", "did an employee refer you",
+            "referral name", "referral employee", "who referred you", "referral details"
+        ]
+        if any(ind in q_lower for ind in referral_indicators):
+            return "No"
+
         # Questions asking for Company / Employer / Organization name
         company_indicators = [
             "current company", "current employer", "present company", "present employer",

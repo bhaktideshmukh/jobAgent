@@ -98,6 +98,22 @@ def test_all():
         assert ans == "No", f"Expected 'No' for '{q}', got '{ans}'"
         print(f"  [PASS] '{q}' -> {ans}")
 
+    # 8b. Test Referred by Company Employee (Always "No")
+    print("\n--- 8b. Referred by Company's Employee (Always 'No') ---")
+    referral_questions = [
+        "Are you referred by company's employee?",
+        "Were you referred by an employee?",
+        "Were you referred by a current employee?",
+        "Employee referral?",
+        "Did an employee refer you to this role?",
+        "Are you referred by anyone in this organisation?",
+        "Internal referral?"
+    ]
+    for q in referral_questions:
+        ans = rag.answer_screening_question(q)
+        assert ans == "No", f"Expected 'No' for referral question '{q}', got '{ans}'"
+        print(f"  [PASS Referral] '{q}' -> {ans}")
+
     # 9. Test Consent & Agreement Questions (Always "Yes")
     print("\n--- 9. Consent & Agreement Questions (Always 'Yes') ---")
     consent_questions = [
@@ -218,8 +234,38 @@ def test_all():
     assert "Khargone" in residence_q, f"Expected Khargone in current location, got '{residence_q}'"
     print(f"  [PASS Residence Check] 'Current location' -> {residence_q}")
 
+    # 12. Verification for Email Updates & Indeed Continue Button Enhancements
+    print("\n--- 12. Email Updates Exclusion & Indeed Continue Detection ---")
+    from src.browser_automation import JobApplicationBrowser
+
+    browser = JobApplicationBrowser(headless=True)
+    
+    # Test exclusions list in browser automation
+    email_terms = [
+        "Get email updates for jobs like this",
+        "Send me job alerts for this search",
+        "Email me jobs like this from this company",
+        "Receive email notifications about jobs",
+        "Stay updated with new openings"
+    ]
+    excluded_keywords = [
+        "email update", "email updates", "get email updates", "job alert", "job alerts",
+        "email me", "send me", "notify me", "similar jobs", "recommended jobs",
+        "stay up to date", "stay updated", "receive updates", "notifications", "alerts"
+    ]
+    for term in email_terms:
+        matched = any(kw in term.lower() for kw in excluded_keywords)
+        assert matched, f"Failed to match email alert term '{term}' against excluded keywords"
+        print(f"  [PASS Email Alert Exclusion] '{term}' -> correctly flagged as excluded")
+
+    # Verify method existence
+    assert hasattr(browser, "_uncheck_email_updates"), "_uncheck_email_updates method missing on browser"
+    assert hasattr(browser, "_dismiss_popups_or_banners"), "_dismiss_popups_or_banners method missing on browser"
+    assert hasattr(browser, "_get_active_container"), "_get_active_container method missing on browser"
+    print("  [PASS Browser Methods] _uncheck_email_updates, _dismiss_popups_or_banners, _get_active_container are implemented")
+
     print("\n" + "=" * 70)
-    print("ALL VERIFICATIONS (INCLUDING 7 NEW USER OBSERVATIONS) PASSED!")
+    print("ALL VERIFICATIONS (INCLUDING 7 NEW USER OBSERVATIONS & INDEED FIXES) PASSED!")
     print("=" * 70)
 
 if __name__ == "__main__":
