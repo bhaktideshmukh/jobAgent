@@ -215,6 +215,7 @@ class JobApplicationBrowser:
             mandatory_screening_topics = [
                 "first name", "last name", "full name", "phone", "mobile", "email",
                 "city", "postal", "zip", "location", "address", "country",
+                "dob", "date of birth", "birth date", "birthdate", "birth",
                 "experience", "years", "ctc", "salary", "notice", "join", "commute",
                 "hybrid", "onsite", "wfo", "eligible", "authorized", "visa", "sponsorship",
                 "rate yourself", "proficiency", "worked with", "worked on", "requirement",
@@ -229,8 +230,8 @@ class JobApplicationBrowser:
         return False
 
     def _fill_text_inputs(self, container, filled_ids: Set[str]):
-        """Fills visible text, number, tel inputs, and textareas smoothly without flickering."""
-        inputs = container.locator("input[type='text'], input[type='tel'], input[type='number'], textarea").all()
+        """Fills visible text, number, tel, date inputs, and textareas smoothly without flickering."""
+        inputs = container.locator("input[type='text'], input[type='tel'], input[type='number'], input[type='date'], textarea").all()
         for inp in inputs:
             try:
                 if not inp.is_visible():
@@ -273,7 +274,8 @@ class JobApplicationBrowser:
 
                 tag_type = inp.get_attribute("type") or "text"
                 is_number = (tag_type == "number") or any(w in question.lower() for w in ["how many", "years", "number of", "days", "rating", "scale", "yoe"])
-                answer = self.rag.answer_screening_question(question, input_type="number" if is_number else "text")
+                input_t = "date" if tag_type == "date" else ("number" if is_number else "text")
+                answer = self.rag.answer_screening_question(question, input_type=input_t)
                 print(f"    [Input] '{question}' -> Filling: '{answer}'")
 
                 # Clean fill: sets value smoothly and dispatches events
@@ -1076,6 +1078,44 @@ class JobApplicationBrowser:
 
         return unchecked_any
 
+    def _is_legitimate_wizard_button(self, loc) -> bool:
+        """
+        Validates that a button or submit element is a legitimate wizard advancement button
+        and NOT a header navigation link, close button, or exit link.
+        """
+        try:
+            if not loc or loc.count() == 0 or not loc.is_visible():
+                return False
+
+            # Exclude exit, close, and feedback buttons
+            data_testid = (loc.get_attribute("data-testid") or "").lower()
+            if any(bad in data_testid for bad in ["exit", "close", "feedback", "dismiss", "cancel"]):
+                return False
+
+            btn_id = (loc.get_attribute("id") or "").lower()
+            if any(bad in btn_id for bad in ["exit", "close", "feedback", "dismiss", "cancel", "accountmenu", "companyreviews"]):
+                return False
+
+            # Exclude links (<a> tags) navigating to companies, gnav, home, salary guide
+            href = (loc.get_attribute("href") or "").lower()
+            if href and any(bad in href for bad in ["companies", "gnav", "salary", "messages", "hire", "notifications", "/?from="]):
+                return False
+
+            txt = loc.inner_text().lower().strip()
+            if any(bad in txt for bad in ["company reviews", "salary guide", "save and close", "report an issue", "skip to main", "employers / post job"]):
+                return False
+
+            # Exclude elements inside top navigation, header, or footer feedback/exit links
+            in_header = loc.evaluate("""e => {
+                return e.closest("header, nav, [class*='gnav'], [id*='gnav'], [data-gnav-element], .ia-Navigation") !== null;
+            }""")
+            if in_header:
+                return False
+
+            return True
+        except Exception:
+            return False
+
     def process_application(self, job_url: str, auto_submit: bool = True) -> Dict[str, Any]:
         """
         Navigates to job URL, detects Easy Apply / Direct Apply (LinkedIn or Indeed),
@@ -1224,48 +1264,55 @@ class JobApplicationBrowser:
                 apply_page.screenshot(path=str(step_img))
 
                 # Comprehensive button selectors for both platforms (Indeed & LinkedIn)
+                # Wait for any async hydration / loading spinner to clear before button evaluation
+                for _ in range(8):
+                    try:
+                        loading_el = apply_page.locator("*:has-text('Preparing review'), *:has-text('loading'), .ia-LoadingSpinner, [aria-label*='Loading']").first
+                        if loading_el.count() > 0 and loading_el.is_visible():
+                            time.sleep(1)
+                            continue
+                    except Exception:
+                        pass
+                    break
+
+                # Comprehensive button selectors for both platforms (Indeed & LinkedIn)
                 submit_selectors = [
+                    "button[data-testid='submit-application-button']",
+                    "button[data-testid*='submit']",
                     "button:has-text('Submit your application')",
                     "button:has-text('Submit application')",
                     "button:has-text('Submit')",
-                    "button[data-testid*='submit']",
                     "button[aria-label*='Submit application']",
                     "button[aria-label*='Submit']",
-                    "input[type='submit'][value*='Submit']",
-                    ":is(button, a, div[role='button'], input[type='submit']):has-text('Submit')"
+                    "input[type='submit'][value*='Submit']"
                 ]
                 review_selectors = [
+                    "button[data-testid='review-application-button']",
+                    "button[data-testid*='review']",
                     "button:has-text('Review your application')",
                     "button:has-text('Review application')",
-                    "button:has-text('Review')",
-                    "button[data-testid*='review']",
+                    "button:has-text('Review'):not(:has-text('Company'))",
                     "button[aria-label*='Review your application']",
-                    "button[aria-label*='Review']",
-                    ":is(button, a, div[role='button'], input[type='submit']):has-text('Review')"
+                    "button[aria-label*='Review']"
                 ]
                 next_selectors = [
-                    "button:has-text('Continue')",
-                    "button:has-text('Next')",
-                    "button:has-text('Save and continue')",
-                    "button:has-text('Continue to next step')",
-                    "button:has-text('Continue to application')",
+                    "button[data-testid='continue-button']",
+                    "button[data-testid='save-and-continue-button']",
                     "button[data-testid*='continue']",
-                    "button[data-testid*='save-and-continue']",
-                    "button[data-testid*='next']",
                     "button.ia-continueButton",
-                    "button.ia-Navigation-button",
-                    "button[id*='continue']",
-                    "button[id*='next']",
+                    "button:has-text('Continue to next step')",
+                    "button:has-text('Save and continue')",
+                    "button:has-text('Continue to application')",
+                    "button:has-text('Continue')",
                     "input[type='submit'][value*='Continue']",
                     "input[type='submit'][value*='Next']",
                     "button[type='submit']:has-text('Continue')",
                     "button[type='submit']:has-text('Next')",
                     "button[aria-label*='Continue to next step']",
                     "button[aria-label*='Continue']",
+                    "button:has-text('Next')",
                     "button[aria-label*='Next']",
-                    "button:has-text('Proceed')",
-                    ":is(button, a, div[role='button'], input[type='submit']):has-text('Continue')",
-                    ":is(button, a, div[role='button'], input[type='submit']):has-text('Next')"
+                    "button:has-text('Proceed')"
                 ]
 
                 submit_btn = None
@@ -1285,7 +1332,7 @@ class JobApplicationBrowser:
                         for sel in submit_selectors:
                             try:
                                 loc = scope.locator(sel).first
-                                if loc.count() > 0 and loc.is_visible():
+                                if self._is_legitimate_wizard_button(loc):
                                     submit_btn = loc
                                     break
                             except Exception:
@@ -1300,7 +1347,7 @@ class JobApplicationBrowser:
                         for sel in review_selectors:
                             try:
                                 loc = scope.locator(sel).first
-                                if loc.count() > 0 and loc.is_visible():
+                                if self._is_legitimate_wizard_button(loc):
                                     review_btn = loc
                                     break
                             except Exception:
@@ -1315,7 +1362,7 @@ class JobApplicationBrowser:
                         for sel in next_selectors:
                             try:
                                 loc = scope.locator(sel).first
-                                if loc.count() > 0 and loc.is_visible():
+                                if self._is_legitimate_wizard_button(loc):
                                     next_btn = loc
                                     break
                             except Exception:

@@ -123,6 +123,26 @@ class ProfileRAG:
         if "portfolio" in q_lower or "website" in q_lower:
             return str(personal.get("portfolio_url", "N/A"))
 
+        # Date of Birth (DOB) -> 04/10/2000 in DD/MM/YYYY format
+        if any(term in q_lower for term in ["date of birth", "dob", "birth date", "birthdate", "born"]):
+            if "day" in q_lower:
+                return "04"
+            if "month" in q_lower:
+                return "10"
+            if "year" in q_lower:
+                return "2000"
+            if input_type == "date":
+                return "2000-10-04"
+            return str(personal.get("date_of_birth", "04/10/2000"))
+
+        if "birth" in q_lower:
+            if "day" in q_lower:
+                return "04"
+            if "month" in q_lower:
+                return "10"
+            if "year" in q_lower:
+                return "2000"
+
         # -------------------------------------------------------------
         # TOP-PRIORITY SCREENING RULES (COMMUTE, WORK MODE, ELIGIBILITY)
         # Evaluated BEFORE location checks so words like "location" do not trigger address returns.

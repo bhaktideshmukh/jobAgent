@@ -262,10 +262,40 @@ def test_all():
     assert hasattr(browser, "_uncheck_email_updates"), "_uncheck_email_updates method missing on browser"
     assert hasattr(browser, "_dismiss_popups_or_banners"), "_dismiss_popups_or_banners method missing on browser"
     assert hasattr(browser, "_get_active_container"), "_get_active_container method missing on browser"
-    print("  [PASS Browser Methods] _uncheck_email_updates, _dismiss_popups_or_banners, _get_active_container are implemented")
+    assert hasattr(browser, "_is_legitimate_wizard_button"), "_is_legitimate_wizard_button method missing on browser"
+    print("  [PASS Browser Methods] _uncheck_email_updates, _dismiss_popups_or_banners, _get_active_container, _is_legitimate_wizard_button are implemented")
+
+    # 13. Verification for Date of Birth (DOB)
+    print("\n--- 13. Date of Birth (DOB) in DD/MM/YYYY ---")
+    dob_standard = rag.answer_screening_question("What is your date of birth?")
+    dob_short = rag.answer_screening_question("DOB")
+    dob_format = rag.answer_screening_question("Date of birth (DD/MM/YYYY)")
+    dob_born = rag.answer_screening_question("When were you born?")
+    dob_day = rag.answer_screening_question("Birth Day")
+    dob_month = rag.answer_screening_question("Birth Month")
+    dob_year = rag.answer_screening_question("Birth Year")
+    dob_html5 = rag.answer_screening_question("Date of Birth", input_type="date")
+
+    assert dob_standard == "04/10/2000", f"Expected 04/10/2000, got {dob_standard}"
+    assert dob_short == "04/10/2000", f"Expected 04/10/2000, got {dob_short}"
+    assert dob_format == "04/10/2000", f"Expected 04/10/2000, got {dob_format}"
+    assert dob_born == "04/10/2000", f"Expected 04/10/2000, got {dob_born}"
+    assert dob_day == "04", f"Expected 04, got {dob_day}"
+    assert dob_month == "10", f"Expected 10, got {dob_month}"
+    assert dob_year == "2000", f"Expected 2000, got {dob_year}"
+    assert dob_html5 == "2000-10-04", f"Expected 2000-10-04, got {dob_html5}"
+
+    print(f"  [PASS DOB Standard] 'Date of birth' -> {dob_standard}")
+    print(f"  [PASS DOB Short] 'DOB' -> {dob_short}")
+    print(f"  [PASS DOB Format] 'Date of birth (DD/MM/YYYY)' -> {dob_format}")
+    print(f"  [PASS DOB Born] 'When were you born?' -> {dob_born}")
+    print(f"  [PASS DOB Day] 'Birth Day' -> {dob_day}")
+    print(f"  [PASS DOB Month] 'Birth Month' -> {dob_month}")
+    print(f"  [PASS DOB Year] 'Birth Year' -> {dob_year}")
+    print(f"  [PASS DOB HTML5] 'Date of Birth (date input)' -> {dob_html5}")
 
     print("\n" + "=" * 70)
-    print("ALL VERIFICATIONS (INCLUDING 7 NEW USER OBSERVATIONS & INDEED FIXES) PASSED!")
+    print("ALL VERIFICATIONS (INCLUDING DOB, INDEED FIXES & NEW OBSERVATIONS) PASSED!")
     print("=" * 70)
 
 if __name__ == "__main__":
