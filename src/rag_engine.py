@@ -144,11 +144,35 @@ class ProfileRAG:
                 return "2000"
 
         # -------------------------------------------------------------
-        # TOP-PRIORITY SCREENING RULES (COMMUTE, WORK MODE, ELIGIBILITY)
+        # TOP-PRIORITY SCREENING RULES (COMMUTE, WORK MODE, ELIGIBILITY, SPONSORSHIP)
         # Evaluated BEFORE location checks so words like "location" do not trigger address returns.
         # -------------------------------------------------------------
 
-        # 1. Commute to job location -> ALWAYS "Yes"
+        # 1. Visa Sponsorship (now or in future) -> ALWAYS "No"
+        visa_sponsorship_indicators = [
+            "require sponsorship", "require visa sponsorship", "sponsorship to work in the country",
+            "require sponsorship to work", "will you now or in the future require sponsorship",
+            "now or in the future require sponsorship", "future require sponsorship",
+            "need sponsorship", "require visa", "need visa sponsorship", "visa sponsorship",
+            "require immigration sponsorship", "sponsorship now or in the future", "sponsorship for a work visa",
+            "require sponsorship for employment", "require sponsorship to work in the country where this role is based",
+            "require sponsorship to work in the country", "require sponsorship to work in"
+        ]
+        if any(ind in q_lower for ind in visa_sponsorship_indicators) or (("sponsorship" in q_lower or "visa" in q_lower) and any(w in q_lower for w in ["require", "need", "future", "now"])):
+            return "No"
+
+        # 2. Legal Authorization to work in country / location -> ALWAYS "Yes"
+        legal_auth_indicators = [
+            "legally authorized to work in the country in which this role is located",
+            "legally authorized to work in the country", "legally authorized to work",
+            "authorized to work in the country", "authorized to work in which this role is located",
+            "legally authorized", "authorized to work in this location", "authorized to work in",
+            "work authorization", "eligible to work in the country", "legally eligible to work"
+        ]
+        if any(ind in q_lower for ind in legal_auth_indicators):
+            return "Yes"
+
+        # 3. Commute to job location -> ALWAYS "Yes"
         commute_indicators = [
             "commuting", "commute to", "okay commuting", "willing to commute", "able to commute",
             "reliably commute", "comfortably commute", "travel to the job", "commute daily",
@@ -158,7 +182,7 @@ class ProfileRAG:
         if any(ind in q_lower for ind in commute_indicators):
             return "Yes"
 
-        # 2. Work mode (Hybrid, WFO, Onsite) -> ALWAYS "Yes"
+        # 4. Work mode (Hybrid, WFO, Onsite) -> ALWAYS "Yes"
         work_mode_indicators = [
             "hybrid", "wfo", "work from office", "onsite", "on-site", "in-office",
             "in office", "work from the office", "working from office", "office-based",
@@ -168,7 +192,7 @@ class ProfileRAG:
         if any(ind in q_lower for ind in work_mode_indicators):
             return "Yes"
 
-        # 3. Location eligibility, authorization, and comfort -> ALWAYS "Yes"
+        # 5. Location eligibility, authorization, and comfort -> ALWAYS "Yes"
         location_eligible_indicators = [
             "eligible to work in this location", "eligible to work in", "authorized to work in this location",
             "authorized to work in", "permitted to work in this location", "permitted to work in",
@@ -180,7 +204,7 @@ class ProfileRAG:
         if any(ind in q_lower for ind in location_eligible_indicators):
             return "Yes"
 
-        # 4. Job Requirements / Read JD / Role Eligibility -> ALWAYS "Yes"
+        # 6. Job Requirements / Read JD / Role Eligibility -> ALWAYS "Yes"
         jd_eligible_indicators = [
             "meet job requirements", "meet the job requirements", "meet requirements",
             "meet all requirements", "meet the requirements", "read jd", "read the jd",
@@ -317,14 +341,25 @@ class ProfileRAG:
         if any(ind in q_lower for ind in serving_np_indicators):
             return "No"
 
-        # 2. Immediate joiner -> ALWAYS "Yes"
+        # 2. How soon can you join us / availability / earliest start date -> "Immediately" (or "0" if numeric days)
+        how_soon_indicators = [
+            "how soon can you join", "how soon could you join", "how soon can you start",
+            "when can you join", "how soon can you join us", "earliest you can join",
+            "earliest you can start", "how soon would you be able to join", "how soon are you available to join"
+        ]
+        if any(w in q_lower for w in how_soon_indicators):
+            if input_type == "number" or any(w in q_lower for w in ["days", "number of", "integer", "in days", "(integer)"]):
+                return "0"
+            return "Immediately"
+
+        # 3. Immediate joiner -> ALWAYS "Yes"
         if any(w in q_lower for w in ["immediate joiner", "can you join immediately", "available to join immediately", "join immediately"]):
             return "Yes"
 
-        # 3. How many days can you join / notice period in days -> ALWAYS "0"
+        # 4. How many days can you join / notice period in days -> ALWAYS "0"
         joining_days_indicators = [
             "how many days can you join", "days can you join", "in how many days can you join",
-            "days required to join", "how soon can you join", "how many days to join",
+            "days required to join", "how many days to join",
             "notice period in days", "notice period (in days)", "notice period days",
             "notice days", "period in days", "days notice", "how many days notice",
             "notice period", "days left"

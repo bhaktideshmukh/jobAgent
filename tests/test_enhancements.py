@@ -294,6 +294,25 @@ def test_all():
     print(f"  [PASS DOB Year] 'Birth Year' -> {dob_year}")
     print(f"  [PASS DOB HTML5] 'Date of Birth (date input)' -> {dob_html5}")
 
+    # 14. Verification for Legal Authorization, Sponsorship & Joining Time
+    print("\n--- 14. Legal Authorization, Sponsorship & Joining Time ---")
+    q_auth = rag.answer_screening_question("Are you legally authorized to work in the country in which this role is located? *")
+    assert q_auth == "Yes", f"Expected 'Yes', got '{q_auth}'"
+    print(f"  [PASS Authorization] 'Are you legally authorized to work in the country in which this role is located? *' -> {q_auth}")
+
+    q_sponsor = rag.answer_screening_question("Will you now or in the future require sponsorship to work in the country where this role is based?  *")
+    assert q_sponsor == "No", f"Expected 'No', got '{q_sponsor}'"
+    print(f"  [PASS Sponsorship] 'Will you now or in the future require sponsorship to work in the country where this role is based?  *' -> {q_sponsor}")
+
+    q_join = rag.answer_screening_question("How soon can you join us *")
+    assert q_join == "Immediately", f"Expected 'Immediately', got '{q_join}'"
+    print(f"  [PASS Joining Time] 'How soon can you join us *' -> {q_join}")
+
+    # Ensure numeric joining days still returns '0'
+    q_days = rag.answer_screening_question("How many days can you join (integer)?", input_type="number")
+    assert q_days == "0", f"Expected '0', got '{q_days}'"
+    print(f"  [PASS Numeric Days] 'How many days can you join (integer)?' -> {q_days}")
+
     print("\n" + "=" * 70)
     print("ALL VERIFICATIONS (INCLUDING DOB, INDEED FIXES & NEW OBSERVATIONS) PASSED!")
     print("=" * 70)

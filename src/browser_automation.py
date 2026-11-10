@@ -589,7 +589,7 @@ class JobApplicationBrowser:
                         filled_ids.add(legend)
                         time.sleep(0.15)
                         break
-                    if answer == "0" and any(k in radio_label for k in ["0", "immediate", "less than", "15 days"]):
+                    if (answer == "0" or "immediate" in answer) and any(k in radio_label for k in ["0", "immediate", "immediately", "less than", "15 days"]):
                         print(f"    [Radio Joining] '{legend}' -> Checking: '{radio_label}'")
                         radio.check(force=True)
                         filled_ids.add(legend)
@@ -658,7 +658,7 @@ class JobApplicationBrowser:
                         r.check(force=True)
                         matched = True
                         break
-                    if ans == "0" and any(k in combo_desc for k in ["0", "immediate", "less than", "15 days"]):
+                    if (ans == "0" or "immediate" in ans) and any(k in combo_desc for k in ["0", "immediate", "immediately", "less than", "15 days"]):
                         print(f"    [Radio Group Joining] '{q_text}' -> Checking: '{r_lbl or val}'")
                         r.check(force=True)
                         matched = True
