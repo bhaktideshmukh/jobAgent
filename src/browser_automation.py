@@ -365,6 +365,17 @@ class JobApplicationBrowser:
                     if any(term in text.lower() for term in ["2", "1-3", "2-3", "2+"]):
                         sel.select_option(value=val)
                         return True
+            elif ans_lower in ["6", "6 months"] or (any(m in q_lower for m in ["month", "months"]) and "6" in ans_lower):
+                for opt, text, val in opt_data:
+                    nums = re.findall(r'\b\d+\b', text) or re.findall(r'\b\d+\b', val)
+                    if nums and int(nums[0]) == 6:
+                        sel.select_option(value=val)
+                        print(f"    [Select Months] '{question}' -> Selected: '{text}'")
+                        return True
+                    if any(term in text.lower() for term in ["6 months", "6 month", "6"]):
+                        sel.select_option(value=val)
+                        print(f"    [Select Months] '{question}' -> Selected: '{text}'")
+                        return True
             elif any(w in q_lower for w in ["country code", "calling code", "dial code", "phone code"]) or "india" in ans_lower or "+91" in ans_lower:
                 for opt, text, val in opt_data:
                     if "+91" in text or "india" in text.lower() or val.lower() == "in":
@@ -521,6 +532,9 @@ class JobApplicationBrowser:
                                 if answer == "2" and any(k in txt for k in ["2", "1-3", "2-3", "2+"]):
                                     chosen = opt
                                     break
+                                if (answer in ["6", "6 months"] or "6" in answer) and any(k in txt for k in ["6", "6 months", "6 month"]):
+                                    chosen = opt
+                                    break
                         if not chosen and options:
                             chosen = options[0]
 
@@ -601,6 +615,12 @@ class JobApplicationBrowser:
                         filled_ids.add(legend)
                         time.sleep(0.15)
                         break
+                    if (answer in ["6", "6 months"] or "6" in answer) and any(k in radio_label for k in ["6", "6 months", "6 month"]):
+                        print(f"    [Radio Months] '{legend}' -> Checking: '{radio_label}'")
+                        radio.check(force=True)
+                        filled_ids.add(legend)
+                        time.sleep(0.15)
+                        break
             except Exception as e:
                 print(f"    [Radio Error] {e}")
 
@@ -665,6 +685,11 @@ class JobApplicationBrowser:
                         break
                     if ans == "2" and any(k in combo_desc for k in ["2", "1-3", "2-3", "2+"]):
                         print(f"    [Radio Group YOE] '{q_text}' -> Checking: '{r_lbl or val}'")
+                        r.check(force=True)
+                        matched = True
+                        break
+                    if (ans in ["6", "6 months"] or "6" in ans) and any(k in combo_desc for k in ["6", "6 months", "6 month"]):
+                        print(f"    [Radio Group Months] '{q_text}' -> Checking: '{r_lbl or val}'")
                         r.check(force=True)
                         matched = True
                         break

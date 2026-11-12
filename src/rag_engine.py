@@ -174,9 +174,11 @@ class ProfileRAG:
 
         # 3. Commute to job location -> ALWAYS "Yes"
         commute_indicators = [
-            "commuting", "commute to", "okay commuting", "willing to commute", "able to commute",
+            "comfortable commuting to this job location", "comfortable commuting to job location",
+            "comfortable commuting to this location", "comfortable to commute",
+            "comfortable commuting", "commuting", "commute to", "okay commuting", "willing to commute", "able to commute",
             "reliably commute", "comfortably commute", "travel to the job", "commute daily",
-            "comfortable commuting", "willing to travel", "commute to work", "okay to commute",
+            "willing to travel", "commute to work", "okay to commute",
             "commute to this", "commute"
         ]
         if any(ind in q_lower for ind in commute_indicators):
@@ -390,12 +392,21 @@ class ProfileRAG:
         # -------------------------------------------------------------
         # EXPERIENCE & TECHNOLOGY QUESTIONS
         # -------------------------------------------------------------
-        # 1. Numeric Years of Experience -> ALWAYS "2"
+        # 1. Additional Months of Experience -> ALWAYS "6"
+        months_indicators = [
+            "additional months of experience", "additional months", "months of experience",
+            "how many months of experience", "months experience", "number of months",
+            "experience in months", "total months", "remaining months", "additional month"
+        ]
+        if any(ind in q_lower for ind in months_indicators) or (("month" in q_lower or "months" in q_lower) and "experience" in q_lower) or q_lower in ["months", "month", "months:", "month:", "additional months", "additional months:"]:
+            return "6"
+
+        # 2. Numeric Years of Experience -> ALWAYS "2"
         years_indicators = [
             "how many years", "years of experience", "total years", "years experience",
             "number of years", "total exp", "yoe", "years of hands-on", "years hands-on"
         ]
-        if any(ind in q_lower for ind in years_indicators):
+        if any(ind in q_lower for ind in years_indicators) or q_lower in ["years", "years:", "year", "year:"]:
             return "2"
 
         # 2. Specific technology experience / worked on technology -> ALWAYS "Yes"

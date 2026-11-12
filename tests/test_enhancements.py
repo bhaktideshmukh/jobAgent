@@ -313,6 +313,33 @@ def test_all():
     assert q_days == "0", f"Expected '0', got '{q_days}'"
     print(f"  [PASS Numeric Days] 'How many days can you join (integer)?' -> {q_days}")
 
+    # 15. Verification for Additional Months of Experience & Commuting Comfort
+    print("\n--- 15. Additional Months of Experience & Commuting Comfort ---")
+    months_qs = [
+        "Additional months of experience",
+        "Months of experience",
+        "Additional months",
+        "How many months of experience?",
+        "Experience in months",
+        "Months"
+    ]
+    for mq in months_qs:
+        ans_m = rag.answer_screening_question(mq)
+        assert ans_m == "6", f"Expected '6' for '{mq}', got '{ans_m}'"
+        print(f"  [PASS Months] '{mq}' -> {ans_m}")
+
+    commute_qs = [
+        "If I am comfortable commuting to this job location",
+        "Are you comfortable commuting to this job location?",
+        "Comfortable commuting to this job location",
+        "Are you comfortable commuting to job location?",
+        "Comfortable commuting to this location"
+    ]
+    for cq in commute_qs:
+        ans_c = rag.answer_screening_question(cq)
+        assert ans_c == "Yes", f"Expected 'Yes' for '{cq}', got '{ans_c}'"
+        print(f"  [PASS Commute Comfort] '{cq}' -> {ans_c}")
+
     print("\n" + "=" * 70)
     print("ALL VERIFICATIONS (INCLUDING DOB, INDEED FIXES & NEW OBSERVATIONS) PASSED!")
     print("=" * 70)
