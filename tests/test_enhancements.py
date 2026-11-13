@@ -340,8 +340,41 @@ def test_all():
         assert ans_c == "Yes", f"Expected 'Yes' for '{cq}', got '{ans_c}'"
         print(f"  [PASS Commute Comfort] '{cq}' -> {ans_c}")
 
+    # 16. Verification for Highest Education Level (Always "Bachelors")
+    print("\n--- 16. Highest Education Level (Always 'Bachelors') ---")
+    education_qs = [
+        "Highest education level",
+        "Highest level of education",
+        "Highest level of education completed",
+        "What is your highest level of education?",
+        "Highest degree",
+        "Highest qualification",
+        "Level of education",
+        "Education level",
+        "Degree",
+        "Highest education",
+        "Educational qualification",
+        "What is your highest degree?",
+        "Degree level"
+    ]
+    for eq in education_qs:
+        ans_e = rag.answer_screening_question(eq)
+        assert ans_e == "Bachelors", f"Expected 'Bachelors' for '{eq}', got '{ans_e}'"
+        print(f"  [PASS Education Level] '{eq}' -> {ans_e}")
+
+    # Yes/No variants
+    edu_yes_no = [
+        "Do you have a Bachelor's degree?",
+        "Have you completed a Bachelor's degree?",
+        "Do you hold a degree?"
+    ]
+    for eq in edu_yes_no:
+        ans_yn = rag.answer_screening_question(eq)
+        assert ans_yn == "Yes", f"Expected 'Yes' for '{eq}', got '{ans_yn}'"
+        print(f"  [PASS Education Yes/No] '{eq}' -> {ans_yn}")
+
     print("\n" + "=" * 70)
-    print("ALL VERIFICATIONS (INCLUDING DOB, INDEED FIXES & NEW OBSERVATIONS) PASSED!")
+    print("ALL VERIFICATIONS (INCLUDING DOB, INDEED FIXES, COMMUTE & HIGHEST EDUCATION) PASSED!")
     print("=" * 70)
 
 if __name__ == "__main__":

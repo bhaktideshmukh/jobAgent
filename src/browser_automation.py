@@ -219,7 +219,7 @@ class JobApplicationBrowser:
                 "experience", "years", "ctc", "salary", "notice", "join", "commute",
                 "hybrid", "onsite", "wfo", "eligible", "authorized", "visa", "sponsorship",
                 "rate yourself", "proficiency", "worked with", "worked on", "requirement",
-                "qualification", "jd", "job description"
+                "qualification", "jd", "job description", "education", "degree", "bachelor"
             ]
             if any(t in label_text or t in desc for t in mandatory_screening_topics):
                 return True
@@ -383,9 +383,23 @@ class JobApplicationBrowser:
                         print(f"    [Select Country Code] '{question}' -> Selected: '{text}'")
                         return True
             elif "bachelor" in ans_lower:
+                # 1. Prioritize explicit bachelor/bachelors/b.tech/btech/b.e/undergraduate/4-year
                 for opt, text, val in opt_data:
-                    if any(term in text.lower() for term in ["bachelor", "b.tech", "graduate", "degree"]):
+                    t_lower = text.lower()
+                    v_lower = val.lower()
+                    if any(term in t_lower or term in v_lower for term in ["bachelor", "bachelors", "b.tech", "btech", "b.e", "undergraduate", "4-year"]):
                         sel.select_option(value=val)
+                        print(f"    [Select Education] '{question}' -> Selected Bachelor's: '{text}'")
+                        return True
+                # 2. Secondary fallback for generic graduate / graduation / degree (excluding master/doctor/phd/associate/secondary/high school)
+                for opt, text, val in opt_data:
+                    t_lower = text.lower()
+                    v_lower = val.lower()
+                    if any(bad in t_lower for bad in ["master", "doctor", "phd", "associate", "secondary", "high school", "intermediate"]):
+                        continue
+                    if any(term in t_lower or term in v_lower for term in ["graduate", "graduation", "college", "degree"]):
+                        sel.select_option(value=val)
+                        print(f"    [Select Education] '{question}' -> Selected: '{text}'")
                         return True
 
             # 4. Fallback for unselected required dropdown
@@ -474,11 +488,19 @@ class JobApplicationBrowser:
                     popup_options = container.locator("div[role='listbox'] div[role='option'], ul[role='listbox'] li, .artdeco-typeahead__result-item").all()
                     if popup_options:
                         clicked = False
-                        for pop in popup_options:
-                            if answer.lower() in pop.inner_text().strip().lower():
-                                pop.click()
-                                clicked = True
-                                break
+                        if "bachelor" in answer.lower():
+                            for pop in popup_options:
+                                p_txt = pop.inner_text().strip().lower()
+                                if any(term in p_txt for term in ["bachelor", "bachelors", "b.tech", "btech", "b.e", "undergraduate"]):
+                                    pop.click()
+                                    clicked = True
+                                    break
+                        if not clicked:
+                            for pop in popup_options:
+                                if answer.lower() in pop.inner_text().strip().lower():
+                                    pop.click()
+                                    clicked = True
+                                    break
                         if not clicked and popup_options[0].is_visible():
                             popup_options[0].click()
                     else:
@@ -535,6 +557,22 @@ class JobApplicationBrowser:
                                 if (answer in ["6", "6 months"] or "6" in answer) and any(k in txt for k in ["6", "6 months", "6 month"]):
                                     chosen = opt
                                     break
+                                if "bachelor" in answer.lower():
+                                    for o in options:
+                                        t_low = o.inner_text().strip().lower()
+                                        if any(term in t_low for term in ["bachelor", "bachelors", "b.tech", "btech", "b.e", "undergraduate", "4-year"]):
+                                            chosen = o
+                                            break
+                                    if not chosen:
+                                        for o in options:
+                                            t_low = o.inner_text().strip().lower()
+                                            if any(bad in t_low for bad in ["master", "doctor", "phd", "associate", "secondary", "high school"]):
+                                                continue
+                                            if any(term in t_low for term in ["graduate", "graduation", "college", "degree"]):
+                                                chosen = o
+                                                break
+                                    if chosen:
+                                        break
                         if not chosen and options:
                             chosen = options[0]
 
@@ -621,6 +659,12 @@ class JobApplicationBrowser:
                         filled_ids.add(legend)
                         time.sleep(0.15)
                         break
+                    if "bachelor" in answer and any(k in radio_label for k in ["bachelor", "bachelors", "b.tech", "btech", "b.e", "undergraduate", "4-year"]):
+                        print(f"    [Radio Education] '{legend}' -> Checking: '{radio_label}'")
+                        radio.check(force=True)
+                        filled_ids.add(legend)
+                        time.sleep(0.15)
+                        break
             except Exception as e:
                 print(f"    [Radio Error] {e}")
 
@@ -690,6 +734,11 @@ class JobApplicationBrowser:
                         break
                     if (ans in ["6", "6 months"] or "6" in ans) and any(k in combo_desc for k in ["6", "6 months", "6 month"]):
                         print(f"    [Radio Group Months] '{q_text}' -> Checking: '{r_lbl or val}'")
+                        r.check(force=True)
+                        matched = True
+                        break
+                    if "bachelor" in ans and any(k in combo_desc for k in ["bachelor", "bachelors", "b.tech", "btech", "b.e", "undergraduate", "4-year"]):
+                        print(f"    [Radio Group Education] '{q_text}' -> Checking: '{r_lbl or val}'")
                         r.check(force=True)
                         matched = True
                         break
@@ -789,7 +838,8 @@ class JobApplicationBrowser:
 
                     const isEligibility = fullDesc.includes("commute") || fullDesc.includes("hybrid") || fullDesc.includes("onsite") ||
                                           fullDesc.includes("wfo") || fullDesc.includes("eligible") || fullDesc.includes("requirements") ||
-                                          fullDesc.includes("qualifications") || fullDesc.includes("jd") || fullDesc.includes("authorized");
+                                          fullDesc.includes("qualifications") || fullDesc.includes("jd") || fullDesc.includes("authorized") ||
+                                          fullDesc.includes("degree") || fullDesc.includes("bachelor") || fullDesc.includes("graduate");
 
                     const inQuestionGroup = inp.closest("fieldset, .jobs-easy-apply-form-section__grouping, .fb-form-element, [data-test-form-element], .ia-Questions-item") !== null;
 

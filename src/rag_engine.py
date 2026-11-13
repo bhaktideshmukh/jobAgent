@@ -433,9 +433,22 @@ class ProfileRAG:
                 return "2"
             return "Yes"
 
-        # Education degree
-        if any(w in q_lower for w in ["degree", "highest qualification", "highest education", "education level"]):
-            return "Bachelor's Degree"
+        # -------------------------------------------------------------
+        # EDUCATION & DEGREE QUESTIONS -> ALWAYS "Bachelors" (or "Yes" for confirmation)
+        # -------------------------------------------------------------
+        education_indicators = [
+            "highest education level", "highest level of education", "highest level of education completed",
+            "highest education", "education level", "level of education", "highest qualification",
+            "highest degree", "highest degree completed", "highest level of education attained",
+            "highest completed education", "level of education completed", "what is your highest level of education",
+            "what is your highest degree", "what is your highest qualification", "degree completed",
+            "degree level", "educational qualification", "educational level", "education qualification",
+            "degree", "highest degree attained", "minimum education", "education background", "education"
+        ]
+        if any(ind in q_lower for ind in education_indicators) or (("education" in q_lower or "degree" in q_lower or "qualification" in q_lower) and any(w in q_lower for w in ["highest", "level", "completed", "attained", "hold", "your"])) or q_lower.strip(" :") in ["degree", "education", "education level", "highest education", "highest qualification", "highest degree", "level of education"]:
+            if is_yes_no_question or any(q_lower.startswith(w) for w in ["do you hold", "have you obtained", "did you graduate"]):
+                return "Yes"
+            return "Bachelors"
 
 
         # LLM fallback if API key is configured
