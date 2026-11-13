@@ -44,12 +44,13 @@ def discover_jobs_node(state: ApplicationState) -> Dict[str, Any]:
     print(f"Queue Limit:      {limit} jobs")
     print("=" * 70)
 
+    results_wanted = max(limit * 2, 20)
     raw_jobs = fetch_easy_apply_jobs(
         search_terms=search_terms,
         locations=locations,
         platforms=target_platforms,
-        results_per_query=8,
-        hours_old=72,
+        results_per_query=results_wanted,
+        hours_old=168,
         max_yoe=max_yoe
     )
 

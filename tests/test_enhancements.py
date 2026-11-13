@@ -373,6 +373,93 @@ def test_all():
         assert ans_yn == "Yes", f"Expected 'Yes' for '{eq}', got '{ans_yn}'"
         print(f"  [PASS Education Yes/No] '{eq}' -> {ans_yn}")
 
+    # 17. Verification for Drop Down Selection of Bachelor's / Bachelors
+    print("\n--- 17. Drop Down Selection of Bachelor's / Bachelors ---")
+    class MockOption:
+        def __init__(self, text, val):
+            self._text = text
+            self._val = val
+        def inner_text(self):
+            return self._text
+        def get_attribute(self, attr):
+            if attr == "value":
+                return self._val
+            return ""
+
+    class MockSelect:
+        def __init__(self, options_tuples):
+            self._options = [MockOption(t, v) for t, v in options_tuples]
+            self.selected_value = None
+            self.selected_text = None
+        def locator(self, sel):
+            if sel == "option":
+                class OptList:
+                    def __init__(self, opts):
+                        self.opts = opts
+                    def all(self):
+                        return self.opts
+                return OptList(self._options)
+            return None
+        def select_option(self, value=None):
+            self.selected_value = value
+            for o in self._options:
+                if o._val == value:
+                    self.selected_text = o._text
+        def input_value(self):
+            return self.selected_value or ""
+
+    # Test Case A: Indeed Dropdown with "Bachelor's"
+    mock_indeed = MockSelect([
+        ("Select an option", "0"),
+        ("Secondary(10th Pass)", "1"),
+        ("Higher Secondary(12th Pass)", "2"),
+        ("Diploma", "3"),
+        ("Bachelor's", "4"),
+        ("Master's", "5"),
+        ("Doctorate", "6")
+    ])
+    res_a = browser._select_best_option(mock_indeed, "Highest level of education", "Bachelors")
+    assert res_a is True, "Failed to select option in Indeed dropdown"
+    assert mock_indeed.selected_text == "Bachelor's", f"Expected Bachelor's, got {mock_indeed.selected_text}"
+    print(f"  [PASS Dropdown Test A - Indeed] Selected: '{mock_indeed.selected_text}' (val={mock_indeed.selected_value})")
+
+    # Test Case B: LinkedIn Dropdown with "Bachelor's degree"
+    mock_linkedin = MockSelect([
+        ("High school diploma", "hs"),
+        ("Associate's degree", "assoc"),
+        ("Bachelor's degree", "bach"),
+        ("Master's degree", "mast"),
+        ("Doctorate", "doc")
+    ])
+    res_b = browser._select_best_option(mock_linkedin, "Highest level of education completed", "Bachelors")
+    assert res_b is True, "Failed to select option in LinkedIn dropdown"
+    assert mock_linkedin.selected_text == "Bachelor's degree", f"Expected Bachelor's degree, got {mock_linkedin.selected_text}"
+    print(f"  [PASS Dropdown Test B - LinkedIn] Selected: '{mock_linkedin.selected_text}' (val={mock_linkedin.selected_value})")
+
+    # Test Case C: Generic Education Dropdown with "Bachelors" (unapostrophized)
+    mock_generic = MockSelect([
+        ("Select education", ""),
+        ("High School", "1"),
+        ("Bachelors", "2"),
+        ("Masters", "3")
+    ])
+    res_c = browser._select_best_option(mock_generic, "Education Level", "Bachelors")
+    assert res_c is True, "Failed to select option in generic dropdown"
+    assert mock_generic.selected_text == "Bachelors", f"Expected Bachelors, got {mock_generic.selected_text}"
+    print(f"  [PASS Dropdown Test C - Generic Bachelors] Selected: '{mock_generic.selected_text}' (val={mock_generic.selected_value})")
+
+    # Test Case D: Dropdown where question is generic but options contain Bachelor's
+    mock_no_label = MockSelect([
+        ("Choose level", "0"),
+        ("Secondary School", "1"),
+        ("Bachelor's Degree", "2"),
+        ("Master's Degree", "3")
+    ])
+    res_d = browser._select_best_option(mock_no_label, "Dropdown", "Yes")
+    assert res_d is True, "Failed to detect education from options alone"
+    assert mock_no_label.selected_text == "Bachelor's Degree", f"Expected Bachelor's Degree, got {mock_no_label.selected_text}"
+    print(f"  [PASS Dropdown Test D - Auto-detected from options] Selected: '{mock_no_label.selected_text}' (val={mock_no_label.selected_value})")
+
     print("\n" + "=" * 70)
     print("ALL VERIFICATIONS (INCLUDING DOB, INDEED FIXES, COMMUTE & HIGHEST EDUCATION) PASSED!")
     print("=" * 70)

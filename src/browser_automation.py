@@ -98,8 +98,11 @@ class JobApplicationBrowser:
             except Exception:
                 pass
 
-        # 2. Check for dialogs (LinkedIn artdeco-modal or Indeed modal)
+        # 2. Check for dialogs (LinkedIn native HTML5 <dialog>, artdeco-modal, or Indeed modal)
         dialog_selectors = [
+            "dialog",
+            "dialog[open]",
+            "[role='dialog']",
             "div.artdeco-modal",
             "div.jobs-easy-apply-modal",
             "div[role='dialog']",
@@ -329,7 +332,46 @@ class JobApplicationBrowser:
                         print(f"    [Select Rating] '{question}' -> Selected: '{text}'")
                         return True
 
-            # 2. Direct string / value match
+            # 2. Education & Degree dropdowns -> strictly pick Bachelor's / Bachelors
+            is_education = (
+                any(w in q_lower for w in ["education", "degree", "qualification", "highest level"]) or
+                "bachelor" in ans_lower or
+                any("bachelor" in t.lower() or "bachelor" in v.lower() for _, t, v in opt_data) or
+                (any("master" in t.lower() for _, t, v in opt_data) and any(d in t.lower() for _, t, _ in opt_data for d in ["school", "diploma", "doctor", "secondary"]))
+            )
+            if is_education:
+                # 2a. Top Priority: Strictly match Bachelor's / Bachelors / Bachelor (normalized for apostrophes)
+                for opt, text, val in opt_data:
+                    t_clean = text.lower().replace("'", "").replace("’", "").strip()
+                    v_clean = val.lower().replace("'", "").replace("’", "").strip()
+                    if "select" in t_clean or "choose" in t_clean:
+                        continue
+                    if "bachelor" in t_clean or "bachelor" in v_clean:
+                        sel.select_option(value=val)
+                        print(f"    [Select Education] '{question}' -> Selected Bachelor's / Bachelors: '{text}' (val='{val}')")
+                        return True
+
+                # 2b. Second Priority: B.Tech, B.E, Undergraduate, 4-year degree
+                for opt, text, val in opt_data:
+                    t_lower = text.lower()
+                    v_lower = val.lower()
+                    if any(term in t_lower or term in v_lower for term in ["b.tech", "btech", "b.e", "undergraduate", "4-year"]):
+                        sel.select_option(value=val)
+                        print(f"    [Select Education] '{question}' -> Selected: '{text}' (val='{val}')")
+                        return True
+
+                # 2c. Third Priority: Generic Graduate / Graduation / College (excluding master/doctor/phd/associate/secondary/high school/diploma)
+                for opt, text, val in opt_data:
+                    t_lower = text.lower()
+                    v_lower = val.lower()
+                    if any(bad in t_lower or bad in v_lower for bad in ["master", "doctor", "phd", "associate", "secondary", "high school", "diploma", "intermediate"]):
+                        continue
+                    if any(term in t_lower or term in v_lower for term in ["graduate", "graduation", "college", "degree"]):
+                        sel.select_option(value=val)
+                        print(f"    [Select Education] '{question}' -> Selected: '{text}' (val='{val}')")
+                        return True
+
+            # 3. Direct string / value match
             for opt, text, val in opt_data:
                 t_lower = text.lower()
                 v_lower = val.lower()
@@ -340,7 +382,7 @@ class JobApplicationBrowser:
                     print(f"    [Select] '{question}' -> Selected: '{text}'")
                     return True
 
-            # 3. Semantic mappings
+            # 4. Semantic mappings
             if ans_lower == "yes":
                 for opt, text, val in opt_data:
                     if "yes" in text.lower():
@@ -382,27 +424,7 @@ class JobApplicationBrowser:
                         sel.select_option(value=val)
                         print(f"    [Select Country Code] '{question}' -> Selected: '{text}'")
                         return True
-            elif "bachelor" in ans_lower:
-                # 1. Prioritize explicit bachelor/bachelors/b.tech/btech/b.e/undergraduate/4-year
-                for opt, text, val in opt_data:
-                    t_lower = text.lower()
-                    v_lower = val.lower()
-                    if any(term in t_lower or term in v_lower for term in ["bachelor", "bachelors", "b.tech", "btech", "b.e", "undergraduate", "4-year"]):
-                        sel.select_option(value=val)
-                        print(f"    [Select Education] '{question}' -> Selected Bachelor's: '{text}'")
-                        return True
-                # 2. Secondary fallback for generic graduate / graduation / degree (excluding master/doctor/phd/associate/secondary/high school)
-                for opt, text, val in opt_data:
-                    t_lower = text.lower()
-                    v_lower = val.lower()
-                    if any(bad in t_lower for bad in ["master", "doctor", "phd", "associate", "secondary", "high school", "intermediate"]):
-                        continue
-                    if any(term in t_lower or term in v_lower for term in ["graduate", "graduation", "college", "degree"]):
-                        sel.select_option(value=val)
-                        print(f"    [Select Education] '{question}' -> Selected: '{text}'")
-                        return True
-
-            # 4. Fallback for unselected required dropdown
+            # 5. Fallback for unselected required dropdown
             curr_val = sel.input_value()
             if not curr_val or curr_val in ["", "0", "-1"]:
                 for opt, text, val in opt_data:
@@ -542,6 +564,40 @@ class JobApplicationBrowser:
                                     if any(t in opt.inner_text().lower() for t in ["expert", "advanced"]):
                                         chosen = opt
                                         break
+                        # Check if custom dropdown is for Education / Degree
+                        is_education = (
+                            any(w in question.lower() for w in ["education", "degree", "qualification", "highest level"]) or
+                            "bachelor" in answer.lower() or
+                            any("bachelor" in o.inner_text().lower() for o in options) or
+                            (any("master" in o.inner_text().lower() for o in options) and any(d in o.inner_text().lower() for o in options for d in ["school", "diploma", "doctor", "secondary"]))
+                        )
+                        if not chosen and is_education:
+                            # 1. Top priority: Strictly Bachelor's / Bachelors / Bachelor (normalized for apostrophes)
+                            for o in options:
+                                o_clean = o.inner_text().strip().lower().replace("'", "").replace("’", "")
+                                if "select" in o_clean or "choose" in o_clean:
+                                    continue
+                                if "bachelor" in o_clean:
+                                    chosen = o
+                                    print(f"    [Custom Dropdown Education] '{question}' -> Selected Bachelor's / Bachelors: '{o.inner_text().strip()}'")
+                                    break
+                            if not chosen:
+                                for o in options:
+                                    o_clean = o.inner_text().strip().lower()
+                                    if any(term in o_clean for term in ["b.tech", "btech", "b.e", "undergraduate", "4-year"]):
+                                        chosen = o
+                                        print(f"    [Custom Dropdown Education] '{question}' -> Selected: '{o.inner_text().strip()}'")
+                                        break
+                            if not chosen:
+                                for o in options:
+                                    o_clean = o.inner_text().strip().lower()
+                                    if any(bad in o_clean for bad in ["master", "doctor", "phd", "associate", "secondary", "high school", "diploma", "intermediate"]):
+                                        continue
+                                    if any(term in o_clean for term in ["graduate", "graduation", "college", "degree"]):
+                                        chosen = o
+                                        print(f"    [Custom Dropdown Education] '{question}' -> Selected: '{o.inner_text().strip()}'")
+                                        break
+
                         if not chosen:
                             for opt in options:
                                 txt = opt.inner_text().strip().lower()
@@ -557,22 +613,6 @@ class JobApplicationBrowser:
                                 if (answer in ["6", "6 months"] or "6" in answer) and any(k in txt for k in ["6", "6 months", "6 month"]):
                                     chosen = opt
                                     break
-                                if "bachelor" in answer.lower():
-                                    for o in options:
-                                        t_low = o.inner_text().strip().lower()
-                                        if any(term in t_low for term in ["bachelor", "bachelors", "b.tech", "btech", "b.e", "undergraduate", "4-year"]):
-                                            chosen = o
-                                            break
-                                    if not chosen:
-                                        for o in options:
-                                            t_low = o.inner_text().strip().lower()
-                                            if any(bad in t_low for bad in ["master", "doctor", "phd", "associate", "secondary", "high school"]):
-                                                continue
-                                            if any(term in t_low for term in ["graduate", "graduation", "college", "degree"]):
-                                                chosen = o
-                                                break
-                                    if chosen:
-                                        break
                         if not chosen and options:
                             chosen = options[0]
 
@@ -659,8 +699,8 @@ class JobApplicationBrowser:
                         filled_ids.add(legend)
                         time.sleep(0.15)
                         break
-                    if "bachelor" in answer and any(k in radio_label for k in ["bachelor", "bachelors", "b.tech", "btech", "b.e", "undergraduate", "4-year"]):
-                        print(f"    [Radio Education] '{legend}' -> Checking: '{radio_label}'")
+                    if ("bachelor" in answer or any(w in legend.lower() for w in ["education", "degree", "qualification", "highest level"])) and any(k in radio_label.replace("'", "").replace("’", "") for k in ["bachelor", "b.tech", "btech", "b.e", "undergraduate", "4-year"]):
+                        print(f"    [Radio Education] '{legend}' -> Checking Bachelor's / Bachelors: '{radio_label}'")
                         radio.check(force=True)
                         filled_ids.add(legend)
                         time.sleep(0.15)
@@ -737,8 +777,8 @@ class JobApplicationBrowser:
                         r.check(force=True)
                         matched = True
                         break
-                    if "bachelor" in ans and any(k in combo_desc for k in ["bachelor", "bachelors", "b.tech", "btech", "b.e", "undergraduate", "4-year"]):
-                        print(f"    [Radio Group Education] '{q_text}' -> Checking: '{r_lbl or val}'")
+                    if ("bachelor" in ans or any(w in q_text.lower() for w in ["education", "degree", "qualification", "highest level"])) and any(k in combo_desc.replace("'", "").replace("’", "") for k in ["bachelor", "b.tech", "btech", "b.e", "undergraduate", "4-year"]):
+                        print(f"    [Radio Group Education] '{q_text}' -> Checking Bachelor's / Bachelors: '{r_lbl or val}'")
                         r.check(force=True)
                         matched = True
                         break
@@ -1229,7 +1269,16 @@ class JobApplicationBrowser:
                         break
 
             # Check if role is already applied
-            already_applied = page.locator("span.artdeco-inline-feedback:has-text('Applied'), button:has-text('Applied'), div:has-text('You applied on Indeed'), [data-testid*='applied']").first
+            already_applied = page.locator(
+                "span.artdeco-inline-feedback:has-text('Applied'), "
+                "button:has-text('Applied'), "
+                "div:has-text('You applied on Indeed'), "
+                "div:has-text('Application submitted'), "
+                "span:has-text('Application submitted'), "
+                "p:has-text('Application submitted'), "
+                "h3:has-text('Application status'), "
+                "[data-testid*='applied']"
+            ).first
             if already_applied.count() > 0 and already_applied.is_visible():
                 print(f"Notice: You have already applied to this role on {platform_name}!")
                 result["status"] = "already_applied"
@@ -1248,11 +1297,12 @@ class JobApplicationBrowser:
                 ]
             else:
                 apply_selectors = [
+                    "button:has-text('Easy Apply')",
+                    "button[aria-label*='Easy Apply' i]",
                     "button.jobs-apply-button",
-                    ":is(button, a, div[role='button']):has-text('Easy Apply')",
-                    ":is(button, a, div[role='button'])[aria-label*='Easy Apply']",
-                    "button[aria-label*='Easy Apply']",
-                    "a:has-text('Easy Apply')",
+                    ".jobs-apply-button--top-card button",
+                    ":is(button, div[role='button']):has-text('Easy Apply')",
+                    ":is(button, div[role='button'])[aria-label*='Easy Apply' i]",
                     ".jobs-apply-button--top-card"
                 ]
 
@@ -1287,20 +1337,35 @@ class JobApplicationBrowser:
             result["easy_apply_found"] = True
             print(f"Found {platform_name} Apply button! Clicking...")
             
-            # Click and detect if Indeed opens a popup tab or inline modal
             apply_page = page
-            try:
-                with page.expect_popup(timeout=4000) as popup_info:
+            if is_indeed:
+                try:
+                    with page.expect_popup(timeout=3000) as popup_info:
+                        apply_btn.click()
+                    apply_page = popup_info.value
+                    print("Indeed opened application in a dedicated application window.")
+                    apply_page.wait_for_load_state("domcontentloaded")
+                    time.sleep(2)
+                except Exception:
+                    time.sleep(2)
+            else:
+                try:
+                    apply_btn.scroll_into_view_if_needed()
+                    time.sleep(0.3)
                     apply_btn.click()
-                apply_page = popup_info.value
-                print("Indeed opened application in a dedicated application window.")
-                apply_page.wait_for_load_state("domcontentloaded")
-                time.sleep(2)
-            except Exception:
+                except Exception:
+                    apply_btn.click(force=True)
                 time.sleep(2)
 
+            # Wait for modal / dialog / iframe to appear
+            for _ in range(8):
+                container = self._get_active_container(apply_page)
+                if container != apply_page:
+                    break
+                time.sleep(0.4)
+
             # Check if LinkedIn daily limit modal appeared
-            limit_modal = apply_page.locator("div.artdeco-modal:has-text('Easy Apply limit'), div[role='dialog']:has-text('Easy Apply limit'), h2:has-text('Easy Apply limit'), p:has-text('limit Easy Apply')").first
+            limit_modal = apply_page.locator("dialog:has-text('Easy Apply limit'), div.artdeco-modal:has-text('Easy Apply limit'), [role='dialog']:has-text('Easy Apply limit'), h2:has-text('Easy Apply limit'), p:has-text('limit Easy Apply')").first
             if limit_modal.count() > 0 and limit_modal.is_visible():
                 print("\n[!] LinkedIn Daily Easy Apply Limit Reached: 'You reached today\\'s Easy Apply limit'")
                 result["status"] = "daily_limit_reached"

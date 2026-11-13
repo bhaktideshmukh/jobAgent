@@ -77,8 +77,8 @@ def fetch_easy_apply_jobs(
     search_terms: List[str],
     locations: List[str],
     platforms: List[str] = None,
-    results_per_query: int = 15,
-    hours_old: int = 48,
+    results_per_query: int = 25,
+    hours_old: int = 168,
     max_yoe: int = 3
 ) -> List[Dict[str, Any]]:
     """
