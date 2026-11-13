@@ -301,7 +301,7 @@ def test_all():
     print(f"  [PASS Authorization] 'Are you legally authorized to work in the country in which this role is located? *' -> {q_auth}")
 
     q_sponsor = rag.answer_screening_question("Will you now or in the future require sponsorship to work in the country where this role is based?  *")
-    assert q_sponsor == "No", f"Expected 'No', got '{q_sponsor}'"
+    assert q_sponsor == "Yes", f"Expected 'Yes', got '{q_sponsor}'"
     print(f"  [PASS Sponsorship] 'Will you now or in the future require sponsorship to work in the country where this role is based?  *' -> {q_sponsor}")
 
     q_join = rag.answer_screening_question("How soon can you join us *")
@@ -460,8 +460,45 @@ def test_all():
     assert mock_no_label.selected_text == "Bachelor's Degree", f"Expected Bachelor's Degree, got {mock_no_label.selected_text}"
     print(f"  [PASS Dropdown Test D - Auto-detected from options] Selected: '{mock_no_label.selected_text}' (val={mock_no_label.selected_value})")
 
+    # 18. Verification for 5 Newly Added Screening Questions
+    print("\n--- 18. Five Newly Added Legal & Compliance Questions ---")
+    
+    # 1. Criminal conviction confirmation in India -> ALWAYS "Yes"
+    q_crim_conf = (
+        "I confirm that I have not been convicted by a court in India for any criminal offense and/or sentenced to imprisonment. "
+        "There are no criminal proceedings pending against me before any court in India. "
+        "I have not been issued a warrant or summons for appearance or a warrant for arrest by any court in India."
+    )
+    ans_crim = rag.answer_screening_question(q_crim_conf)
+    assert ans_crim == "Yes", f"Expected 'Yes' for criminal confirmation, got '{ans_crim}'"
+    print(f"  [PASS 1. Criminal Confirmation] -> {ans_crim}")
+
+    # 2. Misconduct, fraud or abandonment of services -> ALWAYS "No"
+    q_misconduct = "Were any of your previous employment or services suspended or terminated on the grounds of misconduct, fraud or abandonment of services? *"
+    ans_mis = rag.answer_screening_question(q_misconduct)
+    assert ans_mis == "No", f"Expected 'No' for misconduct termination, got '{ans_mis}'"
+    print(f"  [PASS 2. Misconduct Termination] -> {ans_mis}")
+
+    # 3. Bankruptcy, financial delinquency or litigation -> ALWAYS "No"
+    q_bankrupt = "Were you involved in bankruptcy, financial delinquency or any other litigation? *"
+    ans_bank = rag.answer_screening_question(q_bankrupt)
+    assert ans_bank == "No", f"Expected 'No' for bankruptcy/litigation, got '{ans_bank}'"
+    print(f"  [PASS 3. Bankruptcy & Litigation] -> {ans_bank}")
+
+    # 4. Authorized to work in country of hire -> ALWAYS "Yes"
+    q_hire_auth = "Are you authorized to work in the country of hire?"
+    ans_hire = rag.answer_screening_question(q_hire_auth)
+    assert ans_hire == "Yes", f"Expected 'Yes' for country of hire authorization, got '{ans_hire}'"
+    print(f"  [PASS 4. Country of Hire Auth] -> {ans_hire}")
+
+    # 5. Require sponsorship now or in the future -> ALWAYS "Yes"
+    q_spon_new = "Do you now, or will you in the future, require sponsorship? *"
+    ans_spon = rag.answer_screening_question(q_spon_new)
+    assert ans_spon == "Yes", f"Expected 'Yes' for require sponsorship, got '{ans_spon}'"
+    print(f"  [PASS 5. Require Sponsorship] -> {ans_spon}")
+
     print("\n" + "=" * 70)
-    print("ALL VERIFICATIONS (INCLUDING DOB, INDEED FIXES, COMMUTE & HIGHEST EDUCATION) PASSED!")
+    print("ALL VERIFICATIONS (INCLUDING 5 NEW COMPLIANCE QUESTIONS) PASSED!")
     print("=" * 70)
 
 if __name__ == "__main__":

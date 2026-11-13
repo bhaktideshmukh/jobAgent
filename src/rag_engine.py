@@ -148,8 +148,12 @@ class ProfileRAG:
         # Evaluated BEFORE location checks so words like "location" do not trigger address returns.
         # -------------------------------------------------------------
 
-        # 1. Visa Sponsorship (now or in future) -> ALWAYS "No"
+        # 1. Visa Sponsorship (now or in future) -> ALWAYS "Yes" per user preference
         visa_sponsorship_indicators = [
+            "do you now, or will you in the future, require sponsorship",
+            "do you now or will you in the future require sponsorship",
+            "now, or will you in the future, require sponsorship",
+            "now or will you in the future require sponsorship",
             "require sponsorship", "require visa sponsorship", "sponsorship to work in the country",
             "require sponsorship to work", "will you now or in the future require sponsorship",
             "now or in the future require sponsorship", "future require sponsorship",
@@ -159,10 +163,11 @@ class ProfileRAG:
             "require sponsorship to work in the country", "require sponsorship to work in"
         ]
         if any(ind in q_lower for ind in visa_sponsorship_indicators) or (("sponsorship" in q_lower or "visa" in q_lower) and any(w in q_lower for w in ["require", "need", "future", "now"])):
-            return "No"
+            return "Yes"
 
-        # 2. Legal Authorization to work in country / location -> ALWAYS "Yes"
+        # 2. Legal Authorization to work in country / country of hire -> ALWAYS "Yes"
         legal_auth_indicators = [
+            "authorized to work in the country of hire", "country of hire",
             "legally authorized to work in the country in which this role is located",
             "legally authorized to work in the country", "legally authorized to work",
             "authorized to work in the country", "authorized to work in which this role is located",
@@ -221,6 +226,43 @@ class ProfileRAG:
         ]
         if any(ind in q_lower for ind in jd_eligible_indicators):
             return "Yes"
+
+        # 7. Criminal Record / Conviction Confirmation -> ALWAYS "Yes" for declaration / confirmation, "No" if asked if convicted
+        criminal_declaration_indicators = [
+            "not been convicted", "no criminal proceedings", "warrant or summons",
+            "warrant for arrest", "convicted by a court in india", "criminal offense and/or sentenced",
+            "no criminal", "never been convicted", "have not been convicted", "not convicted",
+            "no criminal record", "free of criminal", "clean criminal"
+        ]
+        if any(term in q_lower for term in criminal_declaration_indicators) or (q_lower.startswith("i confirm") and any(w in q_lower for w in ["convicted", "criminal", "imprisonment", "court", "warrant", "summons"])):
+            return "Yes"
+
+        if any(term in q_lower for term in [
+            "have you been convicted", "have you ever been convicted", "convicted of a crime",
+            "convicted of any criminal", "any criminal convictions", "criminal record", "charged with a criminal"
+        ]):
+            return "No"
+
+        # 8. Suspended / Terminated for Misconduct, Fraud, Abandonment -> ALWAYS "No"
+        misconduct_indicators = [
+            "suspended or terminated", "misconduct, fraud", "misconduct or fraud",
+            "abandonment of services", "grounds of misconduct", "terminated on the grounds",
+            "suspended on the grounds", "terminated for misconduct", "terminated for cause",
+            "previous employment or services suspended", "services suspended", "grounds of misconduct, fraud",
+            "misconduct", "abandonment", "terminated for fraud"
+        ]
+        if any(ind in q_lower for ind in misconduct_indicators):
+            return "No"
+
+        # 9. Bankruptcy, Financial Delinquency, Litigation -> ALWAYS "No"
+        bankruptcy_litigation_indicators = [
+            "bankruptcy", "financial delinquency", "any other litigation",
+            "involved in bankruptcy", "involved in litigation", "bankruptcy, financial delinquency",
+            "insolvency", "delinquency or any other litigation", "financial delinquency or any other litigation",
+            "financial delinquency", "litigation"
+        ]
+        if any(ind in q_lower for ind in bankruptcy_litigation_indicators):
+            return "No"
 
         # -------------------------------------------------------------
         # RESIDENCE & LOCATION (STREET, CITY, STATE, PINCODE)
@@ -295,7 +337,7 @@ class ProfileRAG:
         if "authorized to work" in q_lower or "legally authorized" in q_lower:
             return "Yes" if legal.get("legally_authorized_to_work", True) else "No"
         if "sponsorship" in q_lower or "require visa" in q_lower:
-            return "Yes" if legal.get("require_visa_sponsorship_now_or_future", False) else "No"
+            return "Yes" if legal.get("require_visa_sponsorship_now_or_future", True) else "No"
         if "gender" in q_lower:
             return str(legal.get("gender", "Decline to self-identify"))
         if "race" in q_lower or "ethnicity" in q_lower:

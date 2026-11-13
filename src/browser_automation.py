@@ -222,7 +222,8 @@ class JobApplicationBrowser:
                 "experience", "years", "ctc", "salary", "notice", "join", "commute",
                 "hybrid", "onsite", "wfo", "eligible", "authorized", "visa", "sponsorship",
                 "rate yourself", "proficiency", "worked with", "worked on", "requirement",
-                "qualification", "jd", "job description", "education", "degree", "bachelor"
+                "qualification", "jd", "job description", "education", "degree", "bachelor",
+                "convicted", "criminal", "misconduct", "bankruptcy", "litigation", "hire"
             ]
             if any(t in label_text or t in desc for t in mandatory_screening_topics):
                 return True
@@ -850,8 +851,10 @@ class JobApplicationBrowser:
                                        fullDesc.includes("stay up to date") ||
                                        fullDesc.includes("previously worked") || fullDesc.includes("former employee") ||
                                        fullDesc.includes("referred by") || fullDesc.includes("employee referral") ||
-                                       fullDesc.includes("sponsorship") || fullDesc.includes("serving notice") ||
-                                       fullDesc.includes("serving np") || fullDesc.includes("decline") ||
+                                       fullDesc.includes("serving notice") || fullDesc.includes("serving np") ||
+                                       fullDesc.includes("misconduct") || fullDesc.includes("abandonment") ||
+                                       fullDesc.includes("bankruptcy") || fullDesc.includes("financial delinquency") ||
+                                       fullDesc.includes("litigation") || fullDesc.includes("decline") ||
                                        fullDesc.includes("opt out");
                     if (isExcluded) continue;
 
@@ -862,7 +865,10 @@ class JobApplicationBrowser:
                                      fullDesc.includes("certify") || 
                                      fullDesc.includes("acknowledge") ||
                                      fullDesc.includes("declare") ||
-                                     fullDesc.includes("truthful");
+                                     fullDesc.includes("declaration") ||
+                                     fullDesc.includes("truthful") ||
+                                     fullDesc.includes("convicted") ||
+                                     fullDesc.includes("criminal");
 
                     const isRequired = inp.required || 
                                        inp.getAttribute("aria-required") === "true" ||
@@ -937,11 +943,12 @@ class JobApplicationBrowser:
                                 continue
                             txt = lbl.inner_text().lower().strip()
                             excluded_terms = [
-                                "follow", "previously worked", "former employee", "sponsorship",
+                                "follow", "previously worked", "former employee",
                                 "referred by", "employee referral", "serving notice", "decline", "opt out",
                                 "email update", "email updates", "get email updates", "job alert", "job alerts",
                                 "email me", "send me", "notify me", "similar jobs", "recommended jobs",
-                                "stay up to date", "stay updated", "receive updates", "notifications", "alerts"
+                                "stay up to date", "stay updated", "receive updates", "notifications", "alerts",
+                                "misconduct", "abandonment", "bankruptcy", "financial delinquency", "litigation"
                             ]
                             if any(ex in txt for ex in excluded_terms):
                                 continue
