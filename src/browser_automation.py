@@ -221,6 +221,7 @@ class JobApplicationBrowser:
                 "dob", "date of birth", "birth date", "birthdate", "birth",
                 "experience", "years", "ctc", "salary", "notice", "join", "commute",
                 "hybrid", "onsite", "wfo", "eligible", "authorized", "visa", "sponsorship",
+                "relocate", "relocation", "willing to relocate", "4/5", "5 days", "hybrid setting", "days a week",
                 "rate yourself", "proficiency", "worked with", "worked on", "requirement",
                 "qualification", "jd", "job description", "education", "degree", "bachelor",
                 "convicted", "criminal", "misconduct", "bankruptcy", "litigation", "hire"
@@ -883,7 +884,10 @@ class JobApplicationBrowser:
                                           fullDesc.includes("worked with") || fullDesc.includes("worked on");
 
                     const isEligibility = fullDesc.includes("commute") || fullDesc.includes("hybrid") || fullDesc.includes("onsite") ||
-                                          fullDesc.includes("wfo") || fullDesc.includes("eligible") || fullDesc.includes("requirements") ||
+                                          fullDesc.includes("wfo") || fullDesc.includes("relocate") || fullDesc.includes("relocation") ||
+                                          fullDesc.includes("willing to relocate") || fullDesc.includes("4/5") || fullDesc.includes("4-5") ||
+                                          fullDesc.includes("5 days") || fullDesc.includes("4 days") || fullDesc.includes("days a week") ||
+                                          fullDesc.includes("setting") || fullDesc.includes("eligible") || fullDesc.includes("requirements") ||
                                           fullDesc.includes("qualifications") || fullDesc.includes("jd") || fullDesc.includes("authorized") ||
                                           fullDesc.includes("degree") || fullDesc.includes("bachelor") || fullDesc.includes("graduate");
 
@@ -903,13 +907,18 @@ class JobApplicationBrowser:
                     }
                 }
 
-                // Check for standalone visible labels with text like 'I consent' or 'I agree'
+                // Check for standalone visible labels with text like 'I consent' or 'I agree' or 'willing to relocate'
                 const labels = Array.from(document.querySelectorAll("label, span.artdeco-checkbox__label"));
                 for (const lbl of labels) {
                     const txt = (lbl.innerText || "").toLowerCase().trim();
-                    if (txt.includes("follow") || txt.includes("previously worked") || txt.includes("sponsorship")) continue;
+                    if (txt.includes("follow") || txt.includes("previously worked")) continue;
                     
-                    if (txt === "i consent" || txt === "i agree" || txt.startsWith("i consent") || txt.startsWith("i agree") || txt.includes("consent") || txt.includes("terms and conditions")) {
+                    const isTargetLabel = txt === "i consent" || txt === "i agree" || txt.startsWith("i consent") ||
+                                          txt.startsWith("i agree") || txt.includes("consent") || txt.includes("terms and conditions") ||
+                                          txt.includes("relocate") || txt.includes("relocation") || txt.includes("willing to relocate") ||
+                                          txt.includes("4/5 days") || txt.includes("hybrid setting") || txt.includes("onsite");
+
+                    if (isTargetLabel) {
                         const parent = lbl.closest(".artdeco-checkbox") || lbl.closest("label") || lbl;
                         const input = parent.querySelector("input[type='checkbox']") || 
                                       (lbl.htmlFor ? document.querySelector(`#${lbl.htmlFor}`) : null);
@@ -925,14 +934,21 @@ class JobApplicationBrowser:
             }""")
             time.sleep(0.2)
 
-            # 2. Secondary Strategy: Playwright locators for labels containing "I consent", "consent", "I agree"
+            # 2. Secondary Strategy: Playwright locators for labels containing "I consent", "consent", "I agree", "relocate", etc.
             consent_label_selectors = [
                 "label:has-text('I consent')",
                 "label:has-text('consent')",
                 "label:has-text('I agree')",
                 "label:has-text('agree to')",
+                "label:has-text('relocate')",
+                "label:has-text('relocation')",
+                "label:has-text('willing to relocate')",
+                "label:has-text('4/5 days')",
+                "label:has-text('hybrid setting')",
                 "span.artdeco-checkbox__label:has-text('consent')",
-                "span.artdeco-checkbox__label:has-text('agree')"
+                "span.artdeco-checkbox__label:has-text('agree')",
+                "span.artdeco-checkbox__label:has-text('relocate')",
+                "span.artdeco-checkbox__label:has-text('relocation')"
             ]
             for scope in [container, page]:
                 for sel in consent_label_selectors:

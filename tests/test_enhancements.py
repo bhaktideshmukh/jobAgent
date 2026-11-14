@@ -497,8 +497,46 @@ def test_all():
     assert ans_spon == "Yes", f"Expected 'Yes' for require sponsorship, got '{ans_spon}'"
     print(f"  [PASS 5. Require Sponsorship] -> {ans_spon}")
 
+    # 19. Verification for Relocation & 4/5 Days / Hybrid Setting / Onsite
+    print("\n--- 19. Relocation & 4/5 Days / Hybrid Setting / Onsite ---")
+
+    relocate_qs = [
+        "Are you willing to relocate?",
+        "Are you willing to relocate? *",
+        "Willing to relocate?",
+        "Willingness to relocate",
+        "Are you open to relocation?",
+        "Open to relocate",
+        "Would you be willing to relocate?",
+        "Relocation"
+    ]
+    for q in relocate_qs:
+        ans = rag.answer_screening_question(q)
+        assert ans == "Yes", f"Expected 'Yes' for '{q}', got '{ans}'"
+        print(f"  [PASS Relocation] '{q}' -> {ans}")
+
+    work_days_qs = [
+        "Comfortable working all 4/5 days or hybrid setting or onsite",
+        "Are you comfortable working all 4/5 days or hybrid setting or onsite?",
+        "Comfortable working all 4/5 days",
+        "Are you comfortable working all 4/5 days?",
+        "Comfortable working 4/5 days",
+        "Comfortable working 4-5 days",
+        "Comfortable working 5 days",
+        "Comfortable working in a hybrid setting",
+        "Hybrid setting",
+        "Comfortable working onsite",
+        "Are you comfortable working all 5 days from office?",
+        "Comfortable with hybrid setting or onsite",
+        "5 days a week"
+    ]
+    for q in work_days_qs:
+        ans = rag.answer_screening_question(q)
+        assert ans == "Yes", f"Expected 'Yes' for '{q}', got '{ans}'"
+        print(f"  [PASS Work Mode 4/5 Days / Hybrid / Onsite] '{q}' -> {ans}")
+
     print("\n" + "=" * 70)
-    print("ALL VERIFICATIONS (INCLUDING 5 NEW COMPLIANCE QUESTIONS) PASSED!")
+    print("ALL VERIFICATIONS (INCLUDING RELOCATION & WORK MODE 4/5 DAYS) PASSED!")
     print("=" * 70)
 
 if __name__ == "__main__":

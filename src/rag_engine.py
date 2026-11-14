@@ -189,14 +189,29 @@ class ProfileRAG:
         if any(ind in q_lower for ind in commute_indicators):
             return "Yes"
 
-        # 4. Work mode (Hybrid, WFO, Onsite) -> ALWAYS "Yes"
+        # 4. Work mode (Hybrid, WFO, Onsite, 4/5 days, Hybrid setting) -> ALWAYS "Yes"
         work_mode_indicators = [
-            "hybrid", "wfo", "work from office", "onsite", "on-site", "in-office",
-            "in office", "work from the office", "working from office", "office-based",
-            "physical office", "work in office", "work in the office", "hybrid setup",
-            "hybrid model"
+            "comfortable working all 4/5 days", "working all 4/5 days", "all 4/5 days", "all 4-5 days",
+            "all 4 or 5 days", "all 5 days", "4/5 days", "4-5 days", "4 or 5 days", "5 days a week",
+            "4 days a week", "5 days in office", "5 days from office", "5 days working",
+            "working 4/5 days", "working 5 days", "working 4-5 days", "working 4 days",
+            "hybrid setting", "hybrid setup", "hybrid model", "hybrid", "wfo", "work from office",
+            "onsite", "on-site", "in-office", "in office", "work from the office", "working from office",
+            "office-based", "physical office", "work in office", "work in the office",
+            "work setting", "office setting"
         ]
         if any(ind in q_lower for ind in work_mode_indicators):
+            return "Yes"
+
+        # 4b. Relocation preference -> ALWAYS "Yes" (and tick checkbox)
+        relocation_indicators = [
+            "are you willing to relocate", "willing to relocate", "willing to relocation",
+            "open to relocate", "open to relocation", "ready to relocate", "able to relocate",
+            "willingness to relocate", "comfortable relocating", "relocate for this role",
+            "relocate for this position", "relocate for this job", "relocate to",
+            "willing to move", "open to move", "relocate", "relocation"
+        ]
+        if any(ind in q_lower for ind in relocation_indicators):
             return "Yes"
 
         # 5. Location eligibility, authorization, and comfort -> ALWAYS "Yes"
@@ -206,7 +221,7 @@ class ProfileRAG:
             "comfortable with the job location", "comfortable with this location", "comfortable with the location",
             "willing to work in", "open to working in", "okay working in", "okay to work in",
             "can you work in", "able to work in", "work in this location", "work at this location",
-            "comfortable working in", "ready to work in", "relocate", "willing to relocate"
+            "comfortable working in", "ready to work in"
         ]
         if any(ind in q_lower for ind in location_eligible_indicators):
             return "Yes"
